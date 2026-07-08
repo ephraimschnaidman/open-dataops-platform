@@ -1,0 +1,6 @@
+order_id,customer_id,order_date,status,total_amount,currency
+1001,1,2025-02-01,delivered,129.99,USD
+1002,2,2025-02-03,delivered,74.50,USD
+1003,1,2025-02-10,returned,42.00,USD
+1004,3,2025-02-14,shipped,215.25,CAD
+1005,5,2025-02-21,processing,19.99,USD

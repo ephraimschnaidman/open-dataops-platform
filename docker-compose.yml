@@ -1,2 +1,48 @@
-services: {}
+services:
+  postgres:
+    # PostgreSQL is the only service in this milestone. Future services can join
+    # this default Compose network and connect to the hostname "postgres".
+    image: postgres:16-alpine
 
+    # A stable container name makes local troubleshooting commands predictable.
+    container_name: open-dataops-postgres
+
+    # Keep the warehouse running across host restarts unless it is stopped manually.
+    restart: unless-stopped
+
+    # Values are loaded from .env by Docker Compose so credentials and local port
+    # choices stay outside the Compose file.
+    env_file:
+      - .env
+
+    environment:
+      # The official postgres image creates this database and user on first
+      # initialization when the data volume is empty.
+      POSTGRES_DB: dataops
+      POSTGRES_USER: dataops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      # Expose Postgres to local tools while keeping the internal container port
+      # fixed for future services on the Compose network.
+      - "5432:5432"
+
+    volumes:
+      # Persist database files independently of the container lifecycle.
+      - postgres_data:/var/lib/postgresql/data
+
+      # SQL files in this directory run automatically on first database
+      # initialization, in filename order.
+      - ./platform/warehouse/init:/docker-entrypoint-initdb.d:ro
+
+    healthcheck:
+      # pg_isready gives dependent future services a reliable readiness signal.
+      test: ["CMD-SHELL", "pg_isready -U dataops -d dataops"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  # Named volume managed by Docker for durable local warehouse storage.
+  postgres_data:
