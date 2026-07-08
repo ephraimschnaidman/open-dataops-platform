@@ -1,0 +1,12 @@
+version: 2
+
+sources:
+  - name: ecommerce_raw
+    schema: raw
+    tables:
+      - name: customers
+      - name: products
+      - name: orders
+      - name: order_items
+      - name: payments
+      - name: web_events

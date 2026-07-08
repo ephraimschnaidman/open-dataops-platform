@@ -1,0 +1,12 @@
+open_dataops_platform:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5433') | as_number }}"
+      user: "{{ env_var('POSTGRES_USER', 'dataops') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'open_dataops') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'dataops') }}"
+      schema: staging
+      threads: 4

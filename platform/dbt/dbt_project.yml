@@ -1,0 +1,18 @@
+name: open_dataops_platform
+version: "1.0.0"
+config-version: 2
+
+profile: open_dataops_platform
+
+model-paths:
+  - models
+
+target-path: target
+clean-targets:
+  - target
+  - dbt_packages
+
+models:
+  open_dataops_platform:
+    staging:
+      +materialized: view

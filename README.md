@@ -6,18 +6,20 @@ The project separates reusable platform capabilities from example business domai
 
 ## Current Phase
 
-This milestone establishes a minimal local PostgreSQL warehouse foundation and a simple raw bootstrap loader for the e-commerce sample data:
+This milestone establishes a minimal local PostgreSQL warehouse foundation, a simple raw bootstrap loader, and a dbt Core foundation for transforming e-commerce sample data:
 
 - Docker Compose for a local Postgres warehouse
 - A persistent Docker volume for database state
 - Warehouse schemas created automatically on first database startup
 - A simple service boundary so future containers can connect over Docker networking
 - Python bootstrap loader for CSV files in `domains/ecommerce/sample_data/`
+- dbt staging views and tests for raw e-commerce tables
 
 ## Repository Layout
 
 ```text
 platform/
+  dbt/              dbt Core project for warehouse transformations
   warehouse/        Shared warehouse initialization and database assets
 ```
 
@@ -125,6 +127,56 @@ python scripts/load_raw_ecommerce_data.py
 ```
 
 Future milestones will introduce orchestrated and incremental ingestion. This bootstrap loader is intentionally simple and is not a production ingestion pipeline.
+
+## Transform E-commerce Data With dbt
+
+The dbt Core project lives in `platform/dbt`. It connects to the local Docker Postgres warehouse and builds staging views over the raw e-commerce tables.
+
+Install the Python dependencies if you have not already:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+Use a stable Python environment for dbt, such as Python 3.11 or 3.12.
+
+Make sure the warehouse is running and raw data has been bootstrapped:
+
+```bash
+docker compose up -d
+python scripts/bootstrap_raw_ecommerce_data.py
+```
+
+Run the dbt staging models:
+
+```bash
+dbt run --project-dir platform/dbt --profiles-dir platform/dbt
+```
+
+Run the dbt tests:
+
+```bash
+dbt test --project-dir platform/dbt --profiles-dir platform/dbt
+```
+
+The staging models are materialized as views in the `staging` schema:
+
+- `staging.stg_customers`
+- `staging.stg_products`
+- `staging.stg_orders`
+- `staging.stg_order_items`
+- `staging.stg_payments`
+- `staging.stg_web_events`
+
+The dbt profile uses these environment variables when present:
+
+- `POSTGRES_HOST`, default `localhost`
+- `POSTGRES_PORT`, default `5433`
+- `POSTGRES_DB`, default `dataops`
+- `POSTGRES_USER`, default `dataops`
+- `POSTGRES_PASSWORD`, default `open_dataops`
+
+This milestone does not add marts, Airflow, Metabase, or production orchestration.
 
 ## Shutdown
 
