@@ -22,11 +22,13 @@ platform/
 
 ## Getting Started
 
-Copy the example environment file and set a local password if needed:
+Copy the example environment file:
 
 ```bash
 cp .env.example .env
 ```
+
+Edit `.env` and set `POSTGRES_PASSWORD` to the local warehouse password you want to use.
 
 Start the local warehouse:
 
@@ -40,12 +42,20 @@ Postgres will be available on `localhost:5432` with:
 - user: `dataops`
 - password: `POSTGRES_PASSWORD` from `.env`
 
-On first startup, Docker runs SQL files from `platform/warehouse/init` in filename order. The current initialization script creates these schemas:
+On first startup, Postgres runs SQL files from `platform/warehouse/init` in filename order. The current initialization script creates these schemas:
 
 - `raw`
 - `staging`
 - `marts`
 - `metadata`
+
+## Startup
+
+Start or recreate the warehouse container:
+
+```bash
+docker compose up -d
+```
 
 ## Verification
 
@@ -61,10 +71,27 @@ Verify the schemas were created:
 docker compose exec postgres psql -U dataops -d dataops -c "\dn"
 ```
 
+You can also verify the database connection directly:
+
+```bash
+docker compose exec postgres psql -U dataops -d dataops -c "SELECT current_database(), current_user;"
+```
+
+## Shutdown
+
 Stop the warehouse without deleting data:
 
 ```bash
 docker compose down
+```
+
+## Reset
+
+Delete the container and the persistent warehouse volume, then initialize a fresh database:
+
+```bash
+docker compose down -v
+docker compose up -d
 ```
 
 ## Architecture Notes
