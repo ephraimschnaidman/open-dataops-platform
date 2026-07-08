@@ -1,0 +1,31 @@
+product_id,sku,product_name,category,brand,unit_price,currency,is_active
+PROD001,APP-TS-001,Everyday Cotton Tee,apparel,Northstar Basics,24.00,USD,true
+PROD002,APP-HD-002,Fleece Pullover Hoodie,apparel,Northstar Basics,58.00,USD,true
+PROD003,APP-DN-003,Stretch Denim Jacket,apparel,Harbor & Pine,92.00,USD,true
+PROD004,APP-SK-004,Merino Crew Socks,apparel,Trailloom,16.00,USD,true
+PROD005,APP-LG-005,Performance Leggings,apparel,Forma,64.00,USD,true
+PROD006,HOME-MG-006,Stoneware Mug,home,Willow Home,18.00,USD,true
+PROD007,HOME-PL-007,Linen Pillow Cover,home,Willow Home,32.00,USD,true
+PROD008,HOME-CA-008,Soy Candle Cedar Fig,home,Ember Goods,28.00,USD,true
+PROD009,HOME-TH-009,Woven Throw Blanket,home,Harbor & Pine,84.00,USD,true
+PROD010,HOME-OR-010,Desk Organizer Tray,home,Paperfield,22.00,USD,true
+PROD011,ELEC-CH-011,USB-C Fast Charger,electronics,Voltwise,29.00,USD,true
+PROD012,ELEC-CB-012,Braided USB-C Cable,electronics,Voltwise,14.00,USD,true
+PROD013,ELEC-HP-013,Wireless Headphones,electronics,Soundnest,119.00,USD,true
+PROD014,ELEC-SP-014,Portable Bluetooth Speaker,electronics,Soundnest,79.00,USD,true
+PROD015,ELEC-ST-015,Laptop Stand,electronics,DeskForge,49.00,USD,true
+PROD016,BEAU-SR-016,Vitamin C Serum,beauty,Luma Labs,36.00,USD,true
+PROD017,BEAU-MO-017,Daily Gel Moisturizer,beauty,Luma Labs,31.00,USD,true
+PROD018,BEAU-CL-018,Gentle Cream Cleanser,beauty,Kindleaf,24.00,USD,true
+PROD019,BEAU-LP-019,Tinted Lip Balm,beauty,Kindleaf,12.00,USD,true
+PROD020,BEAU-SP-020,Mineral Sunscreen SPF 40,beauty,Solara,27.00,USD,true
+PROD021,OUT-WB-021,Insulated Water Bottle,outdoor,Trailloom,34.00,USD,true
+PROD022,OUT-BP-022,Daypack 18L,outdoor,Trailloom,72.00,USD,true
+PROD023,OUT-HL-023,Rechargeable Headlamp,outdoor,Campwell,41.00,USD,true
+PROD024,OUT-TW-024,Travel Towel,outdoor,Campwell,26.00,USD,true
+PROD025,OUT-MT-025,Yoga Mat,outdoor,Forma,52.00,USD,true
+PROD026,PETS-BD-026,Washable Pet Bed,pets,Happy Tails,68.00,USD,true
+PROD027,PETS-TY-027,Rope Toy Set,pets,Happy Tails,19.00,USD,true
+PROD028,PETS-BL-028,Collapsible Pet Bowl,pets,Happy Tails,15.00,USD,true
+PROD029,HOME-VS-029,Ceramic Bud Vase,home,Willow Home,26.00,USD,true
+PROD030,ELEC-MS-030,Wireless Mouse,electronics,DeskForge,39.00,USD,true
