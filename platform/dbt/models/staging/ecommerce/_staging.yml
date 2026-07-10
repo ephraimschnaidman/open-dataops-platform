@@ -16,6 +16,17 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - apparel
+                  - home
+                  - electronics
+                  - beauty
+                  - outdoor
+                  - pets
 
   - name: stg_orders
     description: Clean staging view over raw e-commerce orders.
@@ -31,7 +42,7 @@ models:
               arguments:
                 to: ref('stg_customers')
                 field: customer_id
-      - name: status
+      - name: order_status
         data_tests:
           - accepted_values:
               arguments:
@@ -76,7 +87,7 @@ models:
               arguments:
                 to: ref('stg_orders')
                 field: order_id
-      - name: status
+      - name: payment_status
         data_tests:
           - accepted_values:
               arguments:
@@ -84,6 +95,14 @@ models:
                   - paid
                   - failed
                   - refunded
+      - name: payment_method
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - card
+                  - paypal
+                  - apple_pay
 
   - name: stg_web_events
     description: Clean staging view over raw e-commerce web events.
@@ -92,3 +111,48 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: customer_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+      - name: product_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: product_id
+      - name: order_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: order_id
+      - name: event_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - product_view
+                  - checkout_completed
+                  - page_view
+                  - search
+                  - add_to_cart
+      - name: channel
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - email
+                  - paid_search
+                  - organic
+                  - direct
+                  - paid_social
+      - name: device
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - mobile
+                  - desktop

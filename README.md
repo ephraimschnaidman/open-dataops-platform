@@ -6,14 +6,14 @@ The project separates reusable platform capabilities from example business domai
 
 ## Current Phase
 
-This milestone establishes a minimal local PostgreSQL warehouse foundation, a simple raw bootstrap loader, and a dbt Core foundation for transforming e-commerce sample data:
+This milestone establishes a minimal local PostgreSQL warehouse foundation, a simple raw bootstrap loader, and a dbt Core foundation for transforming realistic e-commerce sample data:
 
 - Docker Compose for a local Postgres warehouse
 - A persistent Docker volume for database state
 - Warehouse schemas created automatically on first database startup
 - A simple service boundary so future containers can connect over Docker networking
 - Python bootstrap loader for CSV files in `domains/ecommerce/sample_data/`
-- dbt staging views and tests for raw e-commerce tables
+- dbt staging views and tests that clean and standardize source-like raw e-commerce tables
 
 ## Repository Layout
 
@@ -131,6 +131,8 @@ Future milestones will introduce orchestrated and incremental ingestion. This bo
 ## Transform E-commerce Data With dbt
 
 The dbt Core project lives in `platform/dbt`. It connects to the local Docker Postgres warehouse and builds staging views over the raw e-commerce tables.
+
+The raw e-commerce CSVs intentionally preserve realistic source-system imperfections, including mixed-case emails, whitespace in text fields, inconsistent categorical labels, and missing processor transaction IDs for failed payments. The bootstrap loader loads those files as-is into `raw`; dbt staging views perform the first cleaning and standardization pass.
 
 Install the Python dependencies if you have not already:
 
