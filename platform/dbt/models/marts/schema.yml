@@ -1,0 +1,338 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: >
+      Current-state customer dimension. Grain: one row per source customer.
+      Built only from stg_customers and materialized as a table.
+    columns:
+      - name: customer_key
+        description: Stable customer dimension key, currently equal to the source customer ID.
+        data_tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Customer identifier from the source system.
+        data_tests:
+          - not_null
+          - unique
+      - name: marketing_opt_in
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false
+
+  - name: dim_products
+    description: >
+      Current-state product dimension. Grain: one row per source product.
+      Built only from stg_products and materialized as a table.
+    columns:
+      - name: product_key
+        description: Stable product dimension key, currently equal to the source product ID.
+        data_tests:
+          - not_null
+          - unique
+      - name: product_id
+        data_tests:
+          - not_null
+          - unique
+      - name: product_category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [apparel, home, electronics, beauty, outdoor, pets]
+      - name: current_unit_price
+        description: Nonnegative current list price; transactional selling price is held on fct_order_items.
+        data_tests:
+          - not_null
+      - name: is_active
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false
+
+  - name: dim_date
+    description: >
+      Conformed calendar dimension spanning all staged ecommerce activity.
+      Grain: one row per calendar date.
+    columns:
+      - name: date_key
+        data_tests:
+          - not_null
+          - unique
+      - name: month_number
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+                quote: false
+      - name: quarter_number
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+                quote: false
+      - name: is_weekend
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false
+
+  - name: fct_orders
+    description: >
+      Order-header fact used for order lifecycle and order economics.
+      Grain: exactly one row per source order (order_id).
+    columns:
+      - name: order_id
+        data_tests:
+          - not_null
+          - unique
+      - name: customer_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_key
+      - name: order_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: order_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [delivered, canceled, refunded]
+      - name: merchandise_subtotal
+        description: Nonnegative merchandise subtotal in the order currency.
+        data_tests: [not_null]
+      - name: order_discount_amount
+        description: Nonnegative order-level discount in the order currency.
+        data_tests: [not_null]
+      - name: shipping_amount
+        description: Nonnegative shipping charge in the order currency.
+        data_tests: [not_null]
+      - name: tax_amount
+        description: Nonnegative tax in the order currency.
+        data_tests: [not_null]
+      - name: order_total_amount
+        description: Nonnegative final order total in the order currency.
+        data_tests: [not_null]
+      - name: order_count
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1]
+                quote: false
+
+  - name: fct_order_items
+    description: >
+      Product-level order-line fact used for units and merchandise analysis.
+      Grain: exactly one row per source order line (order_item_id).
+    columns:
+      - name: order_item_id
+        data_tests:
+          - not_null
+          - unique
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: product_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_key
+      - name: quantity
+        description: Positive unit quantity for the order line.
+        data_tests: [not_null]
+      - name: unit_selling_price
+        description: Nonnegative unit price recorded when the order was placed.
+        data_tests: [not_null]
+      - name: line_discount_amount
+        description: Nonnegative discount applied to the line.
+        data_tests: [not_null]
+      - name: line_total_amount
+        description: Nonnegative extended line total after discount.
+        data_tests: [not_null]
+
+  - name: fct_payments
+    description: >
+      Payment-attempt and refund fact used for payment performance and reconciliation.
+      Grain: exactly one row per source payment record (payment_id).
+    columns:
+      - name: payment_id
+        data_tests:
+          - not_null
+          - unique
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: payment_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: payment_method
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [card, paypal, apple_pay]
+      - name: payment_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [paid, failed, refunded]
+      - name: payment_amount
+        description: Nonnegative payment or refund magnitude in the payment currency.
+        data_tests: [not_null]
+      - name: payment_attempt_count
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1]
+                quote: false
+
+  - name: fct_web_events
+    description: >
+      Behavioral event fact retaining identified and anonymous activity.
+      Grain: exactly one row per source web event (event_id).
+    columns:
+      - name: event_id
+        data_tests:
+          - not_null
+          - unique
+      - name: customer_key
+        description: Nullable for anonymous events.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_key
+      - name: product_key
+        description: Nullable for events that do not concern a product.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_key
+      - name: order_id
+        description: Nullable optional attribution link to an order.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: event_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: event_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [product_view, checkout_completed, page_view, search, add_to_cart]
+      - name: channel
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [email, paid_search, organic, direct, paid_social]
+      - name: device
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [mobile, desktop]
+      - name: event_count
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1]
+                quote: false
+
+  - name: daily_sales
+    description: >
+      Delivered-order sales summarized by sales date and currency. Grain: one row
+      per sales date and currency. Currency remains in the grain to prevent sums
+      across unlike currencies.
+    columns:
+      - name: daily_sales_key
+        data_tests:
+          - not_null
+          - unique
+      - name: sales_date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: order_count
+        description: Nonnegative count of delivered orders.
+        data_tests: [not_null]
+      - name: order_total_amount
+        description: Nonnegative sum of delivered order totals.
+        data_tests: [not_null]
+
+  - name: customer_lifetime_value
+    description: >
+      Delivered-order lifetime metrics including customers with no delivered
+      orders. Grain: one row per customer.
+    columns:
+      - name: customer_key
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_key
+      - name: lifetime_order_count
+        description: Nonnegative count of delivered orders.
+        data_tests: [not_null]
+      - name: lifetime_order_value
+        description: Nonnegative sum of delivered order totals.
+        data_tests: [not_null]
+
+  - name: product_sales
+    description: >
+      Delivered-order product metrics including products with no sales. Grain:
+      one row per product.
+    columns:
+      - name: product_key
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_key
+      - name: order_count
+        description: Nonnegative count of delivered orders containing the product.
+        data_tests: [not_null]
+      - name: units_sold
+        description: Nonnegative delivered unit quantity.
+        data_tests: [not_null]
+      - name: merchandise_revenue
+        description: Nonnegative delivered line revenue.
+        data_tests: [not_null]

@@ -6,14 +6,15 @@ The project separates reusable platform capabilities from example business domai
 
 ## Current Phase
 
-This milestone establishes a minimal local PostgreSQL warehouse foundation, a simple raw bootstrap loader, and a dbt Core foundation for transforming realistic e-commerce sample data:
+This milestone establishes a local PostgreSQL warehouse, a deterministic raw bootstrap loader, and a dbt Core analytics pipeline for realistic e-commerce sample data:
 
 - Docker Compose for a local Postgres warehouse
 - A persistent Docker volume for database state
 - Warehouse schemas created automatically on first database startup
 - A simple service boundary so future containers can connect over Docker networking
 - Python bootstrap loader for CSV files in `domains/ecommerce/sample_data/`
-- dbt staging views and tests that clean and standardize source-like raw e-commerce tables
+- dbt staging views that clean and standardize source-like raw e-commerce tables
+- dimensional marts and tested aggregate tables for ecommerce analytics
 
 ## Repository Layout
 
@@ -130,7 +131,7 @@ Future milestones will introduce orchestrated and incremental ingestion. This bo
 
 ## Transform E-commerce Data With dbt
 
-The dbt Core project lives in `platform/dbt`. It connects to the local Docker Postgres warehouse and builds staging views over the raw e-commerce tables.
+The dbt Core project lives in `platform/dbt`. It connects to the local Docker Postgres warehouse and builds staging views, dimensional marts, and business aggregates.
 
 The raw e-commerce CSVs intentionally preserve realistic source-system imperfections, including mixed-case emails, whitespace in text fields, inconsistent categorical labels, and missing processor transaction IDs for failed payments. The bootstrap loader loads those files as-is into `raw`; dbt staging views perform the first cleaning and standardization pass.
 
@@ -149,7 +150,7 @@ docker compose up -d
 python scripts/bootstrap_raw_ecommerce_data.py
 ```
 
-Run the dbt staging models:
+Build all dbt models:
 
 ```bash
 dbt run --project-dir platform/dbt --profiles-dir platform/dbt
@@ -170,6 +171,26 @@ The staging models are materialized as views in the `staging` schema:
 - `staging.stg_payments`
 - `staging.stg_web_events`
 
+The analytics lineage is:
+
+```text
+raw tables -> staging views -> dimension and fact tables -> aggregate tables
+```
+
+dbt routes models by layer while using one target connection:
+
+- Staging models are materialized as views in the `staging` schema.
+- Marts and aggregates are materialized as tables in the `marts` schema.
+
+The custom schema naming macro uses these configured schema names verbatim, so
+dbt does not create concatenated names such as `staging_marts`.
+
+- Dimensions: `dim_customers`, `dim_products`, `dim_date`
+- Facts: `fct_orders`, `fct_order_items`, `fct_payments`, `fct_web_events`
+- Aggregates: `daily_sales`, `customer_lifetime_value`, `product_sales`
+
+All models currently rebuild as tables. A production implementation would likely make the event and transaction facts incremental first, with merge handling for late or changed records. Incremental materializations are intentionally deferred while the demo dataset remains small and deterministic.
+
 The dbt profile uses these environment variables when present:
 
 - `POSTGRES_HOST`, default `localhost`
@@ -178,7 +199,7 @@ The dbt profile uses these environment variables when present:
 - `POSTGRES_USER`, default `dataops`
 - `POSTGRES_PASSWORD`, default `open_dataops`
 
-This milestone does not add marts, Airflow, Metabase, or production orchestration.
+This milestone does not add Airflow, Metabase, external data quality tools, incremental models, or production orchestration.
 
 ## Shutdown
 
