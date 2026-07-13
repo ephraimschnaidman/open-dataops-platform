@@ -32,6 +32,7 @@ target/
 dbt_packages/
 logs/
 platform/dbt/.user.yml
+runtime/
 
 # OS files
 .DS_Store

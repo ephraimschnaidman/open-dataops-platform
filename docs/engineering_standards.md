@@ -67,6 +67,13 @@ These standards exist to improve consistency, readability, maintainability, and 
 - Add logging for operational visibility.
 - Raise meaningful exceptions.
 
+## Operational Metadata Standards
+
+- Store platform execution metadata in the `metadata` schema.
+- Link tool-level results to one orchestrator pipeline run.
+- Use stable uniqueness constraints and transactional upserts so collection is safe to retry.
+- Preserve source-tool identifiers and statuses rather than recreating execution logic.
+
 ## Repository Standards
 
 - Use UTF-8 encoding.

@@ -6,7 +6,7 @@ The project separates reusable platform capabilities from example business domai
 
 ## Current Phase
 
-This milestone establishes reusable platform jobs and Apache Airflow orchestration around the PostgreSQL and dbt analytics pipeline:
+This milestone establishes centralized execution metadata collection around the PostgreSQL, dbt, and Airflow analytics pipeline:
 
 - Docker Compose for a local Postgres warehouse
 - A persistent Docker volume for database state
@@ -16,6 +16,7 @@ This milestone establishes reusable platform jobs and Apache Airflow orchestrati
 - dbt staging views that clean and standardize source-like raw e-commerce tables
 - dimensional marts and tested aggregate tables for ecommerce analytics
 - Apache Airflow with LocalExecutor and a manually triggered pipeline DAG
+- centralized Airflow run and dbt node results in the PostgreSQL `metadata` schema
 
 ## Repository Layout
 
@@ -205,9 +206,10 @@ The dbt profile uses these environment variables when present:
 - `POSTGRES_USER`, default `dataops`
 - `POSTGRES_PASSWORD`, default `open_dataops`
 
-Inside the Airflow containers, dbt writes its logs and generated artifacts to the
-writable `airflow_logs` volume at `/opt/airflow/logs/dbt` instead of the read-only
-project checkout. The dbt project source remains mounted read-only.
+Inside the Airflow containers, dbt writes logs and runtime artifacts to the writable
+`airflow_logs` volume. Run and test artifacts are kept separately at
+`/opt/airflow/logs/dbt/artifacts/run` and
+`/opt/airflow/logs/dbt/artifacts/test`; the project source remains read-only.
 
 This milestone does not add scheduling, sensors, Metabase, external data quality tools, incremental models, or cloud services.
 
@@ -228,10 +230,53 @@ The `airflow-init` service migrates the metadata database and creates the config
 The `ecommerce_pipeline` DAG is paused and has no schedule. In the UI, find the DAG, unpause it, and select **Trigger DAG**. It runs these reusable jobs in order:
 
 ```text
-bootstrap_raw_data -> run_dbt -> test_dbt
+bootstrap_raw_data -> run_dbt -> test_dbt -> collect_dbt_metadata
 ```
 
 The DAG only coordinates process execution, retries, timeouts, and task dependencies; implementation remains in `platform/jobs`.
+
+The final task parses both dbt `run_results.json` files and transactionally upserts
+one row in `metadata.pipeline_runs` plus model and test rows in
+`metadata.dbt_node_results`. Re-running it for the same Airflow run is idempotent.
+
+### Metadata collection execution modes
+
+Airflow orchestration supplies the pipeline identity and timing arguments to the
+collector. The DAG invokes the equivalent of:
+
+```bash
+python platform/jobs/collect_dbt_metadata.py \
+  --dag-id ecommerce_pipeline \
+  --airflow-run-id "<airflow-run-id>" \
+  --started-at "<ISO-8601-timestamp>" \
+  --run-status success
+```
+
+For standalone local testing, first run the dbt run and test jobs to create both
+artifacts, then run the collector with generated development metadata:
+
+```bash
+python platform/jobs/run_dbt.py
+python platform/jobs/test_dbt.py
+python platform/jobs/collect_dbt_metadata.py --manual
+```
+
+Calling the collector with no arguments is equivalent to `--manual`. Development
+mode uses `dag_id=manual`, generated pipeline and Airflow run IDs, the current UTC
+start time, and `run_status=SUCCESS`. Database connection settings still come from
+`.env`.
+
+For an existing PostgreSQL volume, apply the new initialization migration once:
+
+```bash
+docker compose exec -T postgres psql -U dataops -d dataops -f /docker-entrypoint-initdb.d/03_create_metadata_tables.sql
+```
+
+Fresh volumes apply this script automatically. Query collected metadata with:
+
+```bash
+docker compose exec postgres psql -U dataops -d dataops -c "SELECT * FROM metadata.pipeline_runs;"
+```
 
 ### Airflow troubleshooting
 

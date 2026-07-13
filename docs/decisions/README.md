@@ -14,5 +14,6 @@ Create a new ADR when a decision changes the architecture, toolchain, data model
 | 004 | Preserve Raw Data & Clean in Staging | Accepted |
 | 005 | Dimensional Modeling                 | Accepted |
 | 006 | Separate Orchestration from Platform Jobs | Accepted |
+| 007 | Centralized Pipeline Metadata Collection | Accepted |
 
 Future ADRs should be added to this table when they are created.

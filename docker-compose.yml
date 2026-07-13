@@ -16,7 +16,7 @@ x-airflow-common: &airflow-common
     POSTGRES_USER: dataops
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     DBT_LOG_PATH: /opt/airflow/logs/dbt
-    DBT_TARGET_PATH: /opt/airflow/logs/dbt/target
+    DBT_ARTIFACT_ROOT: /opt/airflow/logs/dbt/artifacts
   user: "${AIRFLOW_UID:-50000}:0"
   volumes:
     - ./platform/airflow/dags:/opt/airflow/dags:ro
