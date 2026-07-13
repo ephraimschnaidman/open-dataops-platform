@@ -6,7 +6,7 @@ The project separates reusable platform capabilities from example business domai
 
 ## Current Phase
 
-This milestone establishes centralized execution metadata collection around the PostgreSQL, dbt, and Airflow analytics pipeline:
+This milestone establishes table health measurement around the PostgreSQL, dbt, and Airflow analytics pipeline:
 
 - Docker Compose for a local Postgres warehouse
 - A persistent Docker volume for database state
@@ -17,6 +17,7 @@ This milestone establishes centralized execution metadata collection around the 
 - dimensional marts and tested aggregate tables for ecommerce analytics
 - Apache Airflow with LocalExecutor and a manually triggered pipeline DAG
 - centralized Airflow run and dbt node results in the PostgreSQL `metadata` schema
+- row-count, business-timestamp freshness, and schema measurements for important tables
 
 ## Repository Layout
 
@@ -250,7 +251,7 @@ The `airflow-init` service migrates the metadata database and creates the config
 The `ecommerce_pipeline` DAG is paused and has no schedule. In the UI, find the DAG, unpause it, and select **Trigger DAG**. It runs these reusable jobs in order:
 
 ```text
-bootstrap_raw_data -> run_dbt -> test_dbt -> collect_dbt_metadata
+bootstrap_raw_data -> run_dbt -> test_dbt -> collect_dbt_metadata -> collect_data_health_metrics
 ```
 
 The DAG only coordinates process execution, retries, timeouts, and task dependencies; implementation remains in `platform/jobs`.
@@ -286,13 +287,24 @@ mode uses `dag_id=manual`, generated pipeline and Airflow run IDs, the current U
 start time, and `run_status=SUCCESS`. Database connection settings still come from
 `.env`.
 
-For an existing PostgreSQL volume, apply the new initialization migration once:
+The final health task resolves the centralized pipeline run and measures 12 selected
+tables across `raw`, `staging`, and `marts`. It stores one row-count and freshness
+measurement per table in `metadata.table_health_metrics` and column-level shape in
+`metadata.table_schema_snapshots`. Freshness uses centrally configured business
+timestamps such as order, payment, and event time. Collection is transactional and
+safe to retry for the same pipeline run.
+
+Apply both metadata initialization scripts manually when using an existing
+PostgreSQL volume:
 
 ```bash
 docker compose exec -T postgres psql -U dataops -d dataops -f /docker-entrypoint-initdb.d/03_create_metadata_tables.sql
+docker compose exec -T postgres psql -U dataops -d dataops -f /docker-entrypoint-initdb.d/04_create_data_health_tables.sql
 ```
 
-Fresh volumes apply this script automatically. Query collected metadata with:
+Fresh database volumes apply both metadata initialization scripts automatically.
+This milestone only records measurements; it does not add anomaly detection,
+thresholds, alerts, dashboards, or AI analysis. Query collected metadata with:
 
 ```bash
 docker compose exec postgres psql -U dataops -d dataops -c "SELECT * FROM metadata.pipeline_runs;"

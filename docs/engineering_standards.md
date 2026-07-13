@@ -73,6 +73,8 @@ These standards exist to improve consistency, readability, maintainability, and 
 - Link tool-level results to one orchestrator pipeline run.
 - Use stable uniqueness constraints and transactional upserts so collection is safe to retry.
 - Preserve source-tool identifiers and statuses rather than recreating execution logic.
+- Link health measurements and schema snapshots to the pipeline run that produced the measured data.
+- Keep freshness-column semantics in centralized configuration rather than scattering them through collection code.
 
 ## Repository Standards
 

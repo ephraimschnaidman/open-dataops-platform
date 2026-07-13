@@ -13,7 +13,7 @@ default_args = {
 
 with DAG(
     dag_id="ecommerce_pipeline",
-    description="Bootstrap raw data, build and test dbt models, and collect execution metadata",
+    description="Build and test ecommerce data, then collect metadata and health metrics",
     default_args=default_args,
     start_date=days_ago(1),
     schedule=None,
@@ -37,5 +37,17 @@ with DAG(
         },
         append_env=True,
     )
+    collect_data_health_metrics = BashOperator(
+        task_id="collect_data_health_metrics",
+        bash_command=(
+            'python /opt/open-dataops/platform/jobs/collect_data_health_metrics.py '
+            '--dag-id "$PIPELINE_DAG_ID" --airflow-run-id "$PIPELINE_RUN_ID"'
+        ),
+        env={
+            "PIPELINE_DAG_ID": "{{ dag.dag_id }}",
+            "PIPELINE_RUN_ID": "{{ run_id }}",
+        },
+        append_env=True,
+    )
 
-    bootstrap >> run_dbt >> test_dbt >> collect_dbt_metadata
+    bootstrap >> run_dbt >> test_dbt >> collect_dbt_metadata >> collect_data_health_metrics
