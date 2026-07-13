@@ -206,12 +206,32 @@ The dbt profile uses these environment variables when present:
 - `POSTGRES_USER`, default `dataops`
 - `POSTGRES_PASSWORD`, default `open_dataops`
 
-Inside the Airflow containers, dbt writes logs and runtime artifacts to the writable
-`airflow_logs` volume. Run and test artifacts are kept separately at
-`/opt/airflow/logs/dbt/artifacts/run` and
-`/opt/airflow/logs/dbt/artifacts/test`; the project source remains read-only.
+Inside the Airflow containers, dbt writes logs and runtime artifacts to the writable,
+host-backed runtime mount. Run and test artifacts are kept separately at
+`/opt/airflow/runtime/dbt/run` and `/opt/airflow/runtime/dbt/test`; the project
+source remains read-only.
 
 This milestone does not add scheduling, sensors, Metabase, external data quality tools, incremental models, or cloud services.
+
+## Runtime Directory
+
+The repository's `runtime/` directory is the boundary for files generated while
+the platform runs. Docker bind mounts it at `/opt/airflow/runtime` in the Airflow
+containers. Keeping generated files outside the read-only project mount prevents
+dbt, Airflow, and reusable jobs from modifying source-controlled code.
+
+Runtime files are organized as follows:
+
+- `runtime/dbt/run/` contains dbt run artifacts, including `run_results.json`.
+- `runtime/dbt/test/` contains dbt test artifacts, including `run_results.json`.
+- `runtime/dbt/target/` is reserved for shared dbt target artifacts.
+- `runtime/logs/airflow/` contains Airflow task and scheduler-visible logs.
+- `runtime/logs/jobs/` contains logs emitted directly by platform jobs and dbt.
+- `runtime/metadata/` is reserved for generated local metadata files.
+
+Only the `.gitkeep` placeholders that preserve this structure should be committed.
+Generated logs, dbt artifacts, compiled SQL, temporary files, and generated metadata
+under `runtime/` are ignored by Git and can be removed during local cleanup.
 
 ## Apache Airflow
 

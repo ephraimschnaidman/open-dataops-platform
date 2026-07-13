@@ -31,4 +31,4 @@ Pipeline and result identifiers are deterministic. Database uniqueness constrain
 
 ## Local limitations
 
-This implementation records successful end-to-end runs because collection is the final downstream task; a failure before collection is not written to these tables. Artifacts use a local Docker volume and are not durable object storage. Node names and resource types are derived from dbt unique IDs, and retention, concurrency governance, access controls, and cross-environment aggregation are deferred.
+This implementation records successful end-to-end runs because collection is the final downstream task; a failure before collection is not written to these tables. Artifacts use the host-backed local `runtime/` directory and are not durable object storage. Node names and resource types are derived from dbt unique IDs, and retention, concurrency governance, access controls, and cross-environment aggregation are deferred.

@@ -9,18 +9,19 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://dataops:${POSTGRES_PASSWORD}@postgres:5432/airflow
+    AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/runtime/logs/airflow
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:?Set AIRFLOW_SECRET_KEY in .env}
     POSTGRES_HOST: postgres
     POSTGRES_PORT: "5432"
     POSTGRES_DB: dataops
     POSTGRES_USER: dataops
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    DBT_LOG_PATH: /opt/airflow/logs/dbt
-    DBT_ARTIFACT_ROOT: /opt/airflow/logs/dbt/artifacts
+    DBT_LOG_PATH: /opt/airflow/runtime/logs/jobs/dbt
+    DBT_ARTIFACT_ROOT: /opt/airflow/runtime/dbt
   user: "${AIRFLOW_UID:-50000}:0"
   volumes:
     - ./platform/airflow/dags:/opt/airflow/dags:ro
-    - airflow_logs:/opt/airflow/logs
+    - ./runtime:/opt/airflow/runtime
     - ./:/opt/open-dataops:ro
   depends_on:
     postgres:
@@ -74,7 +75,7 @@ services:
         airflow users list | grep -Fq "$${AIRFLOW_ADMIN_USERNAME}")
     user: "${AIRFLOW_UID:-50000}:0"
     volumes:
-      - airflow_logs:/opt/airflow/logs
+      - ./runtime:/opt/airflow/runtime
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,4 +104,3 @@ services:
 
 volumes:
   postgres_data:
-  airflow_logs:

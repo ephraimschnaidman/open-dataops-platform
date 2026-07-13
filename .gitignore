@@ -32,7 +32,12 @@ target/
 dbt_packages/
 logs/
 platform/dbt/.user.yml
-runtime/
+
+# Runtime artifacts (preserve the committed directory structure)
+runtime/**/*
+!runtime/
+!runtime/**/
+!runtime/**/.gitkeep
 
 # OS files
 .DS_Store

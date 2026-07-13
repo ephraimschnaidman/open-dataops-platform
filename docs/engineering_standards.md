@@ -87,6 +87,13 @@ These standards exist to improve consistency, readability, maintainability, and 
   - logs
   - local databases
 
+## Runtime Artifacts
+
+- Treat source code as immutable during execution.
+- Write runtime files under the repository's `runtime/` boundary.
+- Never write logs, generated artifacts, temporary files, or generated metadata into source-controlled directories.
+- Commit only placeholder files needed to preserve the runtime directory structure; ignore generated contents.
+
 ## Docker Standards
 
 - Keep services isolated.
