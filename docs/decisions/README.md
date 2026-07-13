@@ -12,5 +12,7 @@ Create a new ADR when a decision changes the architecture, toolchain, data model
 | 002 | E-commerce Demo Domain               | Accepted |
 | 003 | Use dbt Core                         | Accepted |
 | 004 | Preserve Raw Data & Clean in Staging | Accepted |
+| 005 | Dimensional Modeling                 | Accepted |
+| 006 | Separate Orchestration from Platform Jobs | Accepted |
 
 Future ADRs should be added to this table when they are created.

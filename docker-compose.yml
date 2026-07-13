@@ -1,44 +1,106 @@
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: platform/airflow/Dockerfile
+  image: open-dataops-airflow:${AIRFLOW_VERSION:-2.10.5}
+  restart: unless-stopped
+  environment: &airflow-environment
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://dataops:${POSTGRES_PASSWORD}@postgres:5432/airflow
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:?Set AIRFLOW_SECRET_KEY in .env}
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    POSTGRES_DB: dataops
+    POSTGRES_USER: dataops
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    DBT_LOG_PATH: /opt/airflow/logs/dbt
+    DBT_TARGET_PATH: /opt/airflow/logs/dbt/target
+  user: "${AIRFLOW_UID:-50000}:0"
+  volumes:
+    - ./platform/airflow/dags:/opt/airflow/dags:ro
+    - airflow_logs:/opt/airflow/logs
+    - ./:/opt/open-dataops:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+    airflow-init:
+      condition: service_completed_successfully
+
 services:
   postgres:
-    # PostgreSQL is the only service in this milestone. Future services can join
-    # the default Compose network and connect to the hostname "postgres".
     image: postgres:16
-
-    # A stable container name makes local troubleshooting commands predictable.
     container_name: open-dataops-postgres
-
-    # Keep the warehouse running across host restarts unless it is stopped manually.
     restart: unless-stopped
-
     environment:
-      # The official postgres image creates this database and user on first
-      # initialization when the data volume is empty.
       POSTGRES_DB: dataops
       POSTGRES_USER: dataops
-      # Docker Compose reads POSTGRES_PASSWORD from the local .env file.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-
     ports:
-      # Bind to localhost so local tools can connect without exposing Postgres
-      # on every host network interface.
       - "127.0.0.1:5433:5432"
-
     volumes:
-      # Persist database files independently of the container lifecycle.
       - postgres_data:/var/lib/postgresql/data
-
-      # SQL files in this directory run automatically on first database
-      # initialization, in filename order.
       - ./platform/warehouse/init:/docker-entrypoint-initdb.d:ro
-
     healthcheck:
-      # pg_isready gives Compose and future services a reliable readiness signal.
       test: ["CMD-SHELL", "pg_isready -U dataops -d dataops"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
 
+  airflow-init:
+    build:
+      context: .
+      dockerfile: platform/airflow/Dockerfile
+    image: open-dataops-airflow:${AIRFLOW_VERSION:-2.10.5}
+    restart: "no"
+    environment:
+      <<: *airflow-environment
+      AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME:-admin}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?Set AIRFLOW_ADMIN_PASSWORD in .env}
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate &&
+        (airflow users create \
+          --username "$${AIRFLOW_ADMIN_USERNAME}" \
+          --password "$${AIRFLOW_ADMIN_PASSWORD}" \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com ||
+        airflow users list | grep -Fq "$${AIRFLOW_ADMIN_USERNAME}")
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - airflow_logs:/opt/airflow/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
 volumes:
-  # Named volume managed by Docker for durable local warehouse storage.
   postgres_data:
+  airflow_logs:

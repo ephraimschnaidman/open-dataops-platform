@@ -6,7 +6,7 @@ The project separates reusable platform capabilities from example business domai
 
 ## Current Phase
 
-This milestone establishes a local PostgreSQL warehouse, a deterministic raw bootstrap loader, and a dbt Core analytics pipeline for realistic e-commerce sample data:
+This milestone establishes reusable platform jobs and Apache Airflow orchestration around the PostgreSQL and dbt analytics pipeline:
 
 - Docker Compose for a local Postgres warehouse
 - A persistent Docker volume for database state
@@ -15,12 +15,15 @@ This milestone establishes a local PostgreSQL warehouse, a deterministic raw boo
 - Python bootstrap loader for CSV files in `domains/ecommerce/sample_data/`
 - dbt staging views that clean and standardize source-like raw e-commerce tables
 - dimensional marts and tested aggregate tables for ecommerce analytics
+- Apache Airflow with LocalExecutor and a manually triggered pipeline DAG
 
 ## Repository Layout
 
 ```text
 platform/
+  airflow/          Airflow image, dependencies, and orchestration DAGs
   dbt/              dbt Core project for warehouse transformations
+  jobs/             Reusable, orchestrator-independent job entrypoints
   warehouse/        Shared warehouse initialization and database assets
 ```
 
@@ -34,7 +37,7 @@ cp .env.example .env
 
 Edit `.env` and set `POSTGRES_PASSWORD` to the local warehouse password you want to use.
 
-Start the local warehouse:
+Start PostgreSQL and Airflow (the first build can take several minutes):
 
 ```bash
 docker compose up -d
@@ -46,7 +49,7 @@ Postgres will be available from the host machine on `localhost:5433` with:
 - user: `dataops`
 - password: `POSTGRES_PASSWORD` from `.env`
 
-Inside Docker networking, future services can use the `postgres` hostname and port `5432`.
+Inside Docker networking, services use the `postgres` hostname and port `5432`.
 
 On first startup, Postgres runs SQL files from `platform/warehouse/init` in filename order. The current initialization script creates these schemas:
 
@@ -54,6 +57,8 @@ On first startup, Postgres runs SQL files from `platform/warehouse/init` in file
 - `staging`
 - `marts`
 - `metadata`
+
+The initialization also creates a dedicated `airflow` metadata database. Airflow metadata is separate from the `dataops` warehouse database.
 
 ## Startup
 
@@ -97,10 +102,10 @@ Make sure the warehouse is running:
 docker compose up -d
 ```
 
-Run the bootstrap loader:
+Run the canonical bootstrap job:
 
 ```bash
-python scripts/bootstrap_raw_ecommerce_data.py
+python platform/jobs/bootstrap_raw_data.py
 ```
 
 This is a development bootstrap loader for deterministic local setup. It reads CSV files from `domains/ecommerce/sample_data/`, creates the raw e-commerce tables if needed, truncates the raw tables, and reloads them as a full refresh.
@@ -121,10 +126,11 @@ The script reads connection settings from `.env`. If optional values are not pre
 - `POSTGRES_DB=dataops`
 - `POSTGRES_USER=dataops`
 
-For backward compatibility, the previous command still works:
+For backward compatibility, both previous commands still work:
 
 ```bash
 python scripts/load_raw_ecommerce_data.py
+python scripts/bootstrap_raw_ecommerce_data.py
 ```
 
 Future milestones will introduce orchestrated and incremental ingestion. This bootstrap loader is intentionally simple and is not a production ingestion pipeline.
@@ -150,16 +156,16 @@ docker compose up -d
 python scripts/bootstrap_raw_ecommerce_data.py
 ```
 
-Build all dbt models:
+Build all dbt models through the reusable job:
 
 ```bash
-dbt run --project-dir platform/dbt --profiles-dir platform/dbt
+python platform/jobs/run_dbt.py
 ```
 
-Run the dbt tests:
+Run the dbt tests through the reusable job:
 
 ```bash
-dbt test --project-dir platform/dbt --profiles-dir platform/dbt
+python platform/jobs/test_dbt.py
 ```
 
 The staging models are materialized as views in the `staging` schema:
@@ -199,7 +205,41 @@ The dbt profile uses these environment variables when present:
 - `POSTGRES_USER`, default `dataops`
 - `POSTGRES_PASSWORD`, default `open_dataops`
 
-This milestone does not add Airflow, Metabase, external data quality tools, incremental models, or production orchestration.
+Inside the Airflow containers, dbt writes its logs and generated artifacts to the
+writable `airflow_logs` volume at `/opt/airflow/logs/dbt` instead of the read-only
+project checkout. The dbt project source remains mounted read-only.
+
+This milestone does not add scheduling, sensors, Metabase, external data quality tools, incremental models, or cloud services.
+
+## Apache Airflow
+
+Copy `.env.example` to `.env`, replace the example secrets (including
+`AIRFLOW_ADMIN_USERNAME` and `AIRFLOW_ADMIN_PASSWORD`), then start the stack:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Open the Airflow UI at [http://localhost:8080](http://localhost:8080). Unless changed in `.env`, the local-development credentials are `admin` / `admin`. These defaults are not appropriate for a shared or production environment.
+
+The `airflow-init` service migrates the metadata database and creates the configured admin user. It is safe to rerun when that user already exists.
+
+The `ecommerce_pipeline` DAG is paused and has no schedule. In the UI, find the DAG, unpause it, and select **Trigger DAG**. It runs these reusable jobs in order:
+
+```text
+bootstrap_raw_data -> run_dbt -> test_dbt
+```
+
+The DAG only coordinates process execution, retries, timeouts, and task dependencies; implementation remains in `platform/jobs`.
+
+### Airflow troubleshooting
+
+- Check service health with `docker compose ps` and task/service output with `docker compose logs airflow-init airflow-webserver airflow-scheduler`.
+- If this repository already has a Postgres volume created before Airflow was added, create the metadata database once with `docker compose exec postgres psql -U dataops -d dataops -c "CREATE DATABASE airflow;"`, then run `docker compose up -d` again. Alternatively, `docker compose down -v` performs a destructive full local reset.
+- If port 8080 is occupied, stop the conflicting service or change the host-side webserver port in `docker-compose.yml`.
+- If the DAG is absent, confirm the scheduler is healthy and inspect `docker compose logs airflow-scheduler` for DAG import errors.
+- If a task cannot connect to PostgreSQL, confirm `POSTGRES_PASSWORD` is identical for PostgreSQL and Airflow and that the `postgres` service is healthy.
 
 ## Shutdown
 
@@ -220,4 +260,4 @@ docker compose up -d
 
 ## Architecture Notes
 
-The Compose file intentionally contains only the `postgres` service. Future platform services can connect to it through Docker Compose networking by using the service name `postgres` as the hostname.
+Airflow and the jobs share no business implementation. This keeps the job entrypoints usable from the command line, CI, and future orchestration systems.
