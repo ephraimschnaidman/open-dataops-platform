@@ -8,6 +8,20 @@ class MonitoredTable:
     schema: str
     name: str
     freshness_column: str | None
+    freshness_threshold_hours: float = 48.0
+    row_count_change_threshold_percent: float = 25.0
+    schema_drift_enabled: bool = True
+
+
+SEVERITY_BY_INCIDENT_TYPE = {
+    "STALE_DATA": "HIGH",
+    "ROW_COUNT_INCREASE": "MEDIUM",
+    "ROW_COUNT_DECREASE": "HIGH",
+    "COLUMN_ADDED": "LOW",
+    "COLUMN_REMOVED": "HIGH",
+    "DATA_TYPE_CHANGED": "HIGH",
+    "NULLABILITY_CHANGED": "MEDIUM",
+}
 
 
 MONITORED_TABLES = (

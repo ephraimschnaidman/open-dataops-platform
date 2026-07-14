@@ -16,5 +16,6 @@ Create a new ADR when a decision changes the architecture, toolchain, data model
 | 006 | Separate Orchestration from Platform Jobs | Accepted |
 | 007 | Centralized Pipeline Metadata Collection | Accepted |
 | 008 | Data Health Metrics                  | Accepted |
+| 009 | Data Incident Detection              | Accepted |
 
 Future ADRs should be added to this table when they are created.

@@ -75,6 +75,8 @@ These standards exist to improve consistency, readability, maintainability, and 
 - Preserve source-tool identifiers and statuses rather than recreating execution logic.
 - Link health measurements and schema snapshots to the pipeline run that produced the measured data.
 - Keep freshness-column semantics in centralized configuration rather than scattering them through collection code.
+- Keep incident thresholds and severity mappings in centralized configuration.
+- Detect incidents from persisted measurements; do not couple policy evaluation to measurement collection.
 
 ## Repository Standards
 

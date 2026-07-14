@@ -6,7 +6,7 @@ The project separates reusable platform capabilities from example business domai
 
 ## Current Phase
 
-This milestone establishes table health measurement around the PostgreSQL, dbt, and Airflow analytics pipeline:
+This milestone establishes data incident detection around the PostgreSQL, dbt, and Airflow analytics pipeline:
 
 - Docker Compose for a local Postgres warehouse
 - A persistent Docker volume for database state
@@ -18,6 +18,7 @@ This milestone establishes table health measurement around the PostgreSQL, dbt, 
 - Apache Airflow with LocalExecutor and a manually triggered pipeline DAG
 - centralized Airflow run and dbt node results in the PostgreSQL `metadata` schema
 - row-count, business-timestamp freshness, and schema measurements for important tables
+- retry-safe incident detection for freshness, row-count changes, and schema drift
 
 ## Repository Layout
 
@@ -251,12 +252,12 @@ The `airflow-init` service migrates the metadata database and creates the config
 The `ecommerce_pipeline` DAG is paused and has no schedule. In the UI, find the DAG, unpause it, and select **Trigger DAG**. It runs these reusable jobs in order:
 
 ```text
-bootstrap_raw_data -> run_dbt -> test_dbt -> collect_dbt_metadata -> collect_data_health_metrics
+bootstrap_raw_data -> run_dbt -> test_dbt -> collect_dbt_metadata -> collect_data_health_metrics -> detect_data_incidents
 ```
 
 The DAG only coordinates process execution, retries, timeouts, and task dependencies; implementation remains in `platform/jobs`.
 
-The final task parses both dbt `run_results.json` files and transactionally upserts
+The metadata task parses both dbt `run_results.json` files and transactionally upserts
 one row in `metadata.pipeline_runs` plus model and test rows in
 `metadata.dbt_node_results`. Re-running it for the same Airflow run is idempotent.
 
@@ -302,9 +303,13 @@ docker compose exec -T postgres psql -U dataops -d dataops -f /docker-entrypoint
 docker compose exec -T postgres psql -U dataops -d dataops -f /docker-entrypoint-initdb.d/04_create_data_health_tables.sql
 ```
 
-Fresh database volumes apply both metadata initialization scripts automatically.
-This milestone only records measurements; it does not add anomaly detection,
-thresholds, alerts, dashboards, or AI analysis. Query collected metadata with:
+Apply `05_create_data_incidents.sql` in the same way for an existing volume. Fresh
+database volumes apply all metadata initialization scripts automatically. The sixth
+task compares stored health data with the previous successful pipeline run and
+persists `OPEN` incidents in `metadata.data_incidents`. Thresholds and severities
+are centralized in `platform/jobs/data_health_config.py`. It does not add alerts,
+dashboards, automated resolution, machine-learning detection, or AI analysis.
+Query collected metadata with:
 
 ```bash
 docker compose exec postgres psql -U dataops -d dataops -c "SELECT * FROM metadata.pipeline_runs;"
