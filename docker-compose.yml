@@ -102,5 +102,57 @@ services:
       retries: 5
       start_period: 30s
 
+  grafana-db-init:
+    image: postgres:16
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: dataops
+      PGUSER: dataops
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      GRAFANA_POSTGRES_PASSWORD: ${GRAFANA_POSTGRES_PASSWORD:?Set GRAFANA_POSTGRES_PASSWORD in .env}
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        psql --set=ON_ERROR_STOP=1
+        --file=/opt/open-dataops/create_grafana_reader.sql &&
+        psql --set=ON_ERROR_STOP=1
+        --set=reader_password="$$GRAFANA_POSTGRES_PASSWORD"
+        --file=/opt/open-dataops/configure_grafana_reader.sql
+    volumes:
+      - ./platform/warehouse/init/06_create_grafana_reader.sql:/opt/open-dataops/create_grafana_reader.sql:ro
+      - ./platform/warehouse/sql/configure_grafana_reader.sql:/opt/open-dataops/configure_grafana_reader.sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana-oss:${GRAFANA_VERSION:-11.5.2}
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER in .env}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GRAFANA_POSTGRES_PASSWORD: ${GRAFANA_POSTGRES_PASSWORD:?Set GRAFANA_POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./platform/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./platform/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      grafana-db-init:
+        condition: service_completed_successfully
+
 volumes:
   postgres_data:
+  grafana_data:

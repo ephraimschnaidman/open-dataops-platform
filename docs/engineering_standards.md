@@ -105,6 +105,13 @@ These standards exist to improve consistency, readability, maintainability, and 
 - Store persistent data in Docker volumes.
 - Avoid hard-coded credentials.
 
+## Observability Standards
+
+- Query centralized operational metadata instead of coupling dashboards to domain tables.
+- Provision data sources and dashboards from version-controlled configuration.
+- Give visualization tools read-only access using dedicated database identities.
+- Keep credentials in environment configuration and out of committed provisioning files.
+
 ## Documentation Standards
 
 - Every architectural decision receives an ADR.

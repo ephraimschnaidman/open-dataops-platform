@@ -19,6 +19,7 @@ This milestone establishes data incident detection around the PostgreSQL, dbt, a
 - centralized Airflow run and dbt node results in the PostgreSQL `metadata` schema
 - row-count, business-timestamp freshness, and schema measurements for important tables
 - retry-safe incident detection for freshness, row-count changes, and schema drift
+- a provisioned Grafana OSS dashboard for operational metadata, health, and incidents
 
 ## Repository Layout
 
@@ -256,6 +257,37 @@ bootstrap_raw_data -> run_dbt -> test_dbt -> collect_dbt_metadata -> collect_dat
 ```
 
 The DAG only coordinates process execution, retries, timeouts, and task dependencies; implementation remains in `platform/jobs`.
+
+## Grafana Observability
+
+Set the following values in `.env` before starting the stack:
+
+- `GRAFANA_ADMIN_USER`
+- `GRAFANA_ADMIN_PASSWORD`
+- `GRAFANA_POSTGRES_PASSWORD`
+
+Start or update all services:
+
+```bash
+docker compose up -d
+```
+
+Open [http://localhost:3000](http://localhost:3000) and sign in with the Grafana
+admin credentials from `.env`. The **Open DataOps PostgreSQL** data source and
+**Open DataOps Platform Health** dashboard are provisioned automatically. The
+dashboard appears in the **Open DataOps Platform** folder and displays pipeline
+runs, open incidents, row-count trends, freshness, dbt results, and schema changes.
+
+Grafana connects over the Docker network to `postgres:5432` as `grafana_reader`.
+That role can connect to `dataops` and select from the `metadata` schema but cannot
+write platform data. Grafana application state is retained in the `grafana_data`
+Docker volume. Port 3000 is bound to loopback for local development.
+
+The one-shot `grafana-db-init` service applies the idempotent reader migration and
+password configuration for both new and existing PostgreSQL volumes. Fresh database
+volumes also run the migration during PostgreSQL initialization. Grafana provisioning
+is visualization only: it does not add alert delivery, automated incident resolution,
+AI explanations, Prometheus, Loki, or Tempo.
 
 The metadata task parses both dbt `run_results.json` files and transactionally upserts
 one row in `metadata.pipeline_runs` plus model and test rows in

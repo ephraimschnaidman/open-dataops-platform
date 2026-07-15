@@ -1,0 +1,23 @@
+apiVersion: 1
+
+deleteDatasources:
+  - name: Open DataOps PostgreSQL
+    orgId: 1
+
+datasources:
+  - name: Open DataOps PostgreSQL
+    uid: open-dataops-postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    user: grafana_reader
+    database: dataops
+    isDefault: true
+    editable: false
+    jsonData:
+      database: dataops
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+    secureJsonData:
+      password: $GRAFANA_POSTGRES_PASSWORD
