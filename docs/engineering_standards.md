@@ -77,6 +77,9 @@ These standards exist to improve consistency, readability, maintainability, and 
 - Keep freshness-column semantics in centralized configuration rather than scattering them through collection code.
 - Keep incident thresholds and severity mappings in centralized configuration.
 - Detect incidents from persisted measurements; do not couple policy evaluation to measurement collection.
+- Store generated incident context separately from incident detection facts.
+- Centralize deterministic context rules and assign an explicit version to every output policy.
+- Present investigative next steps as recommendations, never as proven root causes.
 
 ## Repository Standards
 

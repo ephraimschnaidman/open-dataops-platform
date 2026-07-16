@@ -18,5 +18,6 @@ Create a new ADR when a decision changes the architecture, toolchain, data model
 | 008 | Data Health Metrics                  | Accepted |
 | 009 | Data Incident Detection              | Accepted |
 | 010 | Grafana Observability Dashboard      | Accepted |
+| 011 | Metadata-Driven Incident Context     | Accepted |
 
 Future ADRs should be added to this table when they are created.

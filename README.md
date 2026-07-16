@@ -19,6 +19,7 @@ This milestone establishes data incident detection around the PostgreSQL, dbt, a
 - centralized Airflow run and dbt node results in the PostgreSQL `metadata` schema
 - row-count, business-timestamp freshness, and schema measurements for important tables
 - retry-safe incident detection for freshness, row-count changes, and schema drift
+- deterministic, versioned context generation for stale-data incidents
 - a provisioned Grafana OSS dashboard for operational metadata, health, and incidents
 
 ## Repository Layout
@@ -341,6 +342,26 @@ task compares stored health data with the previous successful pipeline run and
 persists `OPEN` incidents in `metadata.data_incidents`. Thresholds and severities
 are centralized in `platform/jobs/data_health_config.py`. It does not add alerts,
 dashboards, automated resolution, machine-learning detection, or AI analysis.
+
+Apply `07_create_incident_context.sql` manually for an existing PostgreSQL volume:
+
+```bash
+docker compose exec -T postgres psql -U dataops -d dataops -f /docker-entrypoint-initdb.d/07_create_incident_context.sql
+```
+
+Generate deterministic Version 1 context for one existing stale-data incident:
+
+```bash
+python platform/jobs/generate_incident_context.py "<incident-id>"
+```
+
+Omit the incident ID to process all open `STALE_DATA` incidents. The standalone job
+reads existing incident metadata and transactionally upserts one `stale_data_v1` row
+per incident into `metadata.incident_context`. It describes the observed freshness
+breach, states the recorded severity, and recommends investigation without claiming
+a root cause or downstream business impact. Context generation is intentionally not
+part of the Airflow DAG yet and does not support other incident types.
+
 Query collected metadata with:
 
 ```bash
