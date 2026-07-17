@@ -357,10 +357,13 @@ python platform/jobs/generate_incident_context.py "<incident-id>"
 
 Omit the incident ID to process all open `STALE_DATA` incidents. The standalone job
 reads existing incident metadata and transactionally upserts one `stale_data_v1` row
-per incident into `metadata.incident_context`. It describes the observed freshness
-breach, states the recorded severity, and recommends investigation without claiming
-a root cause or downstream business impact. Context generation is intentionally not
-part of the Airflow DAG yet and does not support other incident types.
+per incident into `metadata.incident_context`. Context is stored as queryable table,
+status, severity, numeric freshness, and action-code fields; deterministic presentation
+text is rendered by `platform/context/render_incident_context.py` when needed. Reruns
+preserve `context_id` and `created_at` while refreshing generation/update timestamps.
+The job logs to `runtime/logs/jobs/incident_context.log`, rotates daily, and retains 30
+backups. Context generation is intentionally not part of the Airflow DAG and supports
+no incident type beyond `STALE_DATA`.
 
 Query collected metadata with:
 

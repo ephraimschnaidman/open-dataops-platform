@@ -79,6 +79,7 @@ These standards exist to improve consistency, readability, maintainability, and 
 - Detect incidents from persisted measurements; do not couple policy evaluation to measurement collection.
 - Store generated incident context separately from incident detection facts.
 - Centralize deterministic context rules and assign an explicit version to every output policy.
+- Persist structured numeric context and controlled status/action codes; render prose only at presentation time.
 - Present investigative next steps as recommendations, never as proven root causes.
 
 ## Repository Standards
@@ -100,6 +101,7 @@ These standards exist to improve consistency, readability, maintainability, and 
 - Write runtime files under the repository's `runtime/` boundary.
 - Never write logs, generated artifacts, temporary files, or generated metadata into source-controlled directories.
 - Commit only placeholder files needed to preserve the runtime directory structure; ignore generated contents.
+- Use standard rotating logging handlers with explicit retention; never trim active log files manually.
 
 ## Docker Standards
 
