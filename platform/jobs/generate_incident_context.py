@@ -14,6 +14,8 @@ from collect_data_health_metrics import get_connection_params
 from incident_context_rules import (
     IncidentContext,
     IncidentMetadata,
+    SCHEMA_CHANGE_TYPES,
+    generate_schema_change_context,
     generate_stale_data_context,
 )
 
@@ -35,7 +37,7 @@ class UnsupportedIncidentTypeError(IncidentContextGenerationError):
 
 
 def _to_incident(row: tuple[object, ...]) -> tuple[uuid.UUID, IncidentMetadata]:
-    incident_id, incident_type, severity, schema, table, expected, observed, status = row
+    incident_id, incident_type, severity, schema, table, column, expected, observed, status = row
     return incident_id, IncidentMetadata(
         incident_type=str(incident_type),
         severity=str(severity),
@@ -44,13 +46,14 @@ def _to_incident(row: tuple[object, ...]) -> tuple[uuid.UUID, IncidentMetadata]:
         expected_value=None if expected is None else str(expected),
         observed_value=None if observed is None else str(observed),
         incident_status=str(status),
+        column_name=None if column is None else str(column),
     )
 
 
 def load_incidents(
     conn: psycopg.Connection, incident_id: uuid.UUID | None,
 ) -> list[tuple[uuid.UUID, IncidentMetadata]]:
-    columns = """incident_id, incident_type, severity, table_schema, table_name,
+    columns = """incident_id, incident_type, severity, table_schema, table_name, column_name,
                  expected_value, observed_value, incident_status"""
     if incident_id is not None:
         rows = conn.execute(
@@ -62,9 +65,9 @@ def load_incidents(
     else:
         rows = conn.execute(
             f"""SELECT {columns} FROM metadata.data_incidents
-                WHERE incident_type = %s AND incident_status = %s
+                WHERE incident_type IN (%s, %s, %s, %s, %s) AND incident_status = %s
                 ORDER BY detected_at, incident_id""",
-            ("STALE_DATA", "OPEN"),
+            ("STALE_DATA", *SCHEMA_CHANGE_TYPES, "OPEN"),
         ).fetchall()
     return [_to_incident(row) for row in rows]
 
@@ -76,8 +79,8 @@ def persist_context(conn: psycopg.Connection, incident_id: uuid.UUID,
         """INSERT INTO metadata.incident_context
            (context_id, incident_id, context_version, qualified_table, evaluation_status,
             severity, expected_freshness_hours, observed_freshness_hours,
-            recommended_action_code, generated_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            recommended_action_code, change_type, affected_column, generated_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            ON CONFLICT (incident_id, context_version) DO UPDATE SET
              qualified_table = EXCLUDED.qualified_table,
              evaluation_status = EXCLUDED.evaluation_status,
@@ -85,12 +88,15 @@ def persist_context(conn: psycopg.Connection, incident_id: uuid.UUID,
              expected_freshness_hours = EXCLUDED.expected_freshness_hours,
              observed_freshness_hours = EXCLUDED.observed_freshness_hours,
              recommended_action_code = EXCLUDED.recommended_action_code,
+             change_type = EXCLUDED.change_type,
+             affected_column = EXCLUDED.affected_column,
              generated_at = EXCLUDED.generated_at,
              updated_at = CURRENT_TIMESTAMP
            RETURNING (xmax = 0)""",
         (context_id, incident_id, context.context_version, context.qualified_table,
          context.evaluation_status, context.severity, context.expected_freshness_hours,
-         context.observed_freshness_hours, context.recommended_action_code, generated_at),
+         context.observed_freshness_hours, context.recommended_action_code,
+         context.change_type, context.affected_column, generated_at),
     ).fetchone()
     inserted = bool(result and result[0])
     logger.info("%s context for incident %s", "Inserted" if inserted else "Updated", incident_id)
@@ -102,12 +108,15 @@ def generate_contexts(conn: psycopg.Connection, incident_id: uuid.UUID | None,
     context_ids = []
     for current_id, incident in load_incidents(conn, incident_id):
         logger.info("Processing incident %s", current_id)
-        if incident.incident_type != "STALE_DATA":
+        if incident.incident_type == "STALE_DATA":
+            context = generate_stale_data_context(incident)
+        elif incident.incident_type in SCHEMA_CHANGE_TYPES:
+            context = generate_schema_change_context(incident)
+        else:
             raise UnsupportedIncidentTypeError(
                 f"Incident {current_id} has unsupported type {incident.incident_type!r}; "
-                "only STALE_DATA is supported"
+                "only STALE_DATA and SCHEMA_CHANGE v1 are supported"
             )
-        context = generate_stale_data_context(incident)
         context_ids.append(persist_context(conn, current_id, context, generated_at))
     return context_ids
 
@@ -123,7 +132,7 @@ def generate_incident_context(incident_id: uuid.UUID | None = None) -> list[uuid
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Generate deterministic context for STALE_DATA incidents",
+        description="Generate deterministic context for supported incidents",
     )
     parser.add_argument("incident_id", nargs="?", type=uuid.UUID)
     args = parser.parse_args(argv)

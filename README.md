@@ -347,23 +347,23 @@ Apply `07_create_incident_context.sql` manually for an existing PostgreSQL volum
 
 ```bash
 docker compose exec -T postgres psql -U dataops -d dataops -f /docker-entrypoint-initdb.d/07_create_incident_context.sql
+docker compose exec -T postgres psql -U dataops -d dataops -f /docker-entrypoint-initdb.d/08_add_schema_change_context.sql
 ```
 
-Generate deterministic Version 1 context for one existing stale-data incident:
+Generate deterministic Version 1 context for one supported incident:
 
 ```bash
 python platform/jobs/generate_incident_context.py "<incident-id>"
 ```
 
-Omit the incident ID to process all open `STALE_DATA` incidents. The standalone job
-reads existing incident metadata and transactionally upserts one `stale_data_v1` row
-per incident into `metadata.incident_context`. Context is stored as queryable table,
-status, severity, numeric freshness, and action-code fields; deterministic presentation
+Omit the incident ID to process all open `STALE_DATA` and supported schema-change
+incidents. The standalone job reads existing incident metadata and transactionally
+upserts one versioned row per incident into `metadata.incident_context`. Schema-change
+context supports only added, removed, and type-changed columns. Deterministic presentation
 text is rendered by `platform/context/render_incident_context.py` when needed. Reruns
 preserve `context_id` and `created_at` while refreshing generation/update timestamps.
 The job logs to `runtime/logs/jobs/incident_context.log`, rotates daily, and retains 30
-backups. Context generation is intentionally not part of the Airflow DAG and supports
-no incident type beyond `STALE_DATA`.
+backups. Context generation remains intentionally separate from the Airflow DAG.
 
 Query collected metadata with:
 

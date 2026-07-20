@@ -5,8 +5,17 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 STALE_DATA_CONTEXT_VERSION = "stale_data_v1"
+SCHEMA_CHANGE_CONTEXT_VERSION = "schema_change_v1"
 SUPPORTED_INCIDENT_TYPE = "STALE_DATA"
 RECOMMENDED_ACTION_CODE = "INVESTIGATE_UPSTREAM_INGESTION_AND_VERIFY_THRESHOLD"
+SCHEMA_CHANGE_ACTION_CODE = "REVIEW_SCHEMA_CHANGE_AND_VALIDATE_CONSUMERS"
+SCHEMA_CHANGE_TYPES = {
+    "COLUMN_ADDED": "COLUMN_ADDED",
+    "COLUMN_REMOVED": "COLUMN_REMOVED",
+    "COLUMN_TYPE_CHANGED": "COLUMN_TYPE_CHANGED",
+    # The current detector uses this source name; context exposes the v1 name above.
+    "DATA_TYPE_CHANGED": "COLUMN_TYPE_CHANGED",
+}
 EVALUATION_STATUSES = frozenset({"EXCEEDED_THRESHOLD", "WITHIN_THRESHOLD", "UNKNOWN"})
 _HOURS_PATTERN = re.compile(r"^\s*(?:<=\s*)?([0-9]+(?:\.[0-9]+)?)\s+hours?\s*$", re.I)
 
@@ -24,6 +33,7 @@ class IncidentMetadata:
     expected_value: str | None
     observed_value: str | None
     incident_status: str
+    column_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -35,6 +45,8 @@ class IncidentContext:
     expected_freshness_hours: Decimal | None
     observed_freshness_hours: Decimal | None
     recommended_action_code: str
+    change_type: str | None = None
+    affected_column: str | None = None
 
 
 def parse_freshness_hours(value: str | None) -> Decimal | None:
@@ -84,4 +96,27 @@ def generate_stale_data_context(incident: IncidentMetadata) -> IncidentContext:
         expected_freshness_hours=expected,
         observed_freshness_hours=observed,
         recommended_action_code=RECOMMENDED_ACTION_CODE,
+    )
+
+
+def generate_schema_change_context(incident: IncidentMetadata) -> IncidentContext:
+    """Build deterministic structured Version 1 context for supported schema changes."""
+    if incident.incident_type not in SCHEMA_CHANGE_TYPES:
+        raise IncidentContextRuleError(
+            f"Unsupported schema change type {incident.incident_type!r}"
+        )
+    if not incident.severity:
+        raise IncidentContextRuleError("SCHEMA_CHANGE context requires severity")
+    if not incident.column_name:
+        raise IncidentContextRuleError("SCHEMA_CHANGE context requires affected column")
+    return IncidentContext(
+        context_version=SCHEMA_CHANGE_CONTEXT_VERSION,
+        qualified_table=qualify_table(incident.table_schema, incident.table_name),
+        evaluation_status="UNKNOWN",
+        severity=incident.severity,
+        expected_freshness_hours=None,
+        observed_freshness_hours=None,
+        recommended_action_code=SCHEMA_CHANGE_ACTION_CODE,
+        change_type=SCHEMA_CHANGE_TYPES[incident.incident_type],
+        affected_column=incident.column_name,
     )
