@@ -9,9 +9,13 @@ from datetime import datetime, timezone
 from typing import Iterable
 
 import psycopg
+from psycopg import sql
 
 from collect_data_health_metrics import get_connection_params, resolve_pipeline_run_id
-from data_health_config import MONITORED_TABLES, SEVERITY_BY_INCIDENT_TYPE, MonitoredTable
+from data_health_config import (
+    MONITORED_TABLES, NULL_VALUE_COLUMNS_BY_TABLE, SEVERITY_BY_INCIDENT_TYPE,
+    MonitoredTable,
+)
 
 ID_NAMESPACE = uuid.UUID("14c69470-a231-4a97-8ff2-e10e445bce52")
 logger = logging.getLogger(__name__)
@@ -56,7 +60,8 @@ def detect_for_table(table: MonitoredTable, current: HealthMetric,
                      previous: HealthMetric | None,
                      current_schema: dict[str, ColumnShape],
                      previous_schema: dict[str, ColumnShape] | None,
-                     detected_at: datetime) -> list[Incident]:
+                     detected_at: datetime,
+                     null_counts: dict[str, int] | None = None) -> list[Incident]:
     incidents: list[Incident] = []
     if current.max_freshness_value is not None:
         age_hours = (detected_at - current.max_freshness_value).total_seconds() / 3600
@@ -110,7 +115,40 @@ def detect_for_table(table: MonitoredTable, current: HealthMetric,
                     f"Column {column} on {table.schema}.{table.name} changed nullability from "
                     f"{before.is_nullable} to {after.is_nullable}", column=column,
                     expected=before.is_nullable, observed=after.is_nullable))
+
+    for column, null_count in sorted((null_counts or {}).items()):
+        if null_count > 0:
+            incidents.append(_incident(
+                "NULL_VALUES", table,
+                f"Column {column} on {table.schema}.{table.name} contains "
+                f"{null_count} NULL value(s); expected 0",
+                column=column, expected=0, observed=null_count,
+            ))
     return incidents
+
+
+def load_null_counts(
+    conn: psycopg.Connection, table: MonitoredTable,
+    current_schema: dict[str, ColumnShape],
+) -> dict[str, int]:
+    """Count NULLs in the explicitly configured contract columns for one table."""
+    columns = NULL_VALUE_COLUMNS_BY_TABLE.get((table.schema, table.name), ())
+    missing = sorted(set(columns) - set(current_schema))
+    if missing:
+        raise IncidentDetectionError(
+            f"NULL-value candidate columns do not exist on {table.schema}.{table.name}: {missing}"
+        )
+    if not columns:
+        return {}
+    expressions = sql.SQL(", ").join(
+        sql.SQL("COUNT(*) FILTER (WHERE {} IS NULL)").format(sql.Identifier(column))
+        for column in columns
+    )
+    statement = sql.SQL("SELECT {} FROM {}").format(
+        expressions, sql.Identifier(table.schema, table.name),
+    )
+    row = conn.execute(statement).fetchone()
+    return {column: int(count) for column, count in zip(columns, row, strict=True)}
 
 
 def load_metrics(
@@ -200,10 +238,12 @@ def detect_data_incidents(*, dag_id: str | None, airflow_run_id: str | None,
         incidents: list[Incident] = []
         for table in MONITORED_TABLES:
             key = (table.schema, table.name)
+            null_counts = load_null_counts(conn, table, current_schema.get(key, {}))
             incidents.extend(detect_for_table(
                 table, current_metrics[key], previous_metrics.get(key),
                 current_schema.get(key, {}),
                 None if previous_id is None else previous_schema.get(key), detected_at,
+                null_counts,
             ))
         count = persist_incidents(conn, run_id, incidents, detected_at)
     logger.info(

@@ -21,6 +21,33 @@ SEVERITY_BY_INCIDENT_TYPE = {
     "COLUMN_REMOVED": "HIGH",
     "DATA_TYPE_CHANGED": "HIGH",
     "NULLABILITY_CHANGED": "MEDIUM",
+    "NULL_VALUES": "HIGH",
+}
+
+
+# Columns whose data contract requires every row to contain a value. This is
+# intentionally explicit: many monitored columns are legitimately nullable.
+NULL_VALUE_COLUMNS_BY_TABLE = {
+    ("raw", "customers"): ("customer_id",),
+    ("raw", "orders"): ("order_id", "customer_id"),
+    ("raw", "payments"): ("payment_id", "order_id"),
+    ("raw", "web_events"): ("event_id",),
+    ("staging", "stg_customers"): ("customer_id",),
+    ("staging", "stg_orders"): ("order_id", "customer_id"),
+    ("staging", "stg_payments"): ("payment_id", "order_id"),
+    ("staging", "stg_web_events"): ("event_id",),
+    ("marts", "fct_orders"): (
+        "order_id", "customer_key", "order_date_key", "order_status",
+        "merchandise_subtotal", "order_discount_amount", "shipping_amount",
+        "tax_amount", "order_total_amount",
+    ),
+    ("marts", "fct_payments"): (
+        "payment_id", "order_id", "payment_date_key", "payment_amount",
+    ),
+    ("marts", "fct_web_events"): ("event_id", "event_date_key"),
+    ("marts", "daily_sales"): (
+        "daily_sales_key", "sales_date", "order_count", "order_total_amount",
+    ),
 }
 
 

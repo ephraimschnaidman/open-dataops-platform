@@ -340,8 +340,19 @@ Apply `05_create_data_incidents.sql` in the same way for an existing volume. Fre
 database volumes apply all metadata initialization scripts automatically. The sixth
 task compares stored health data with the previous successful pipeline run and
 persists `OPEN` incidents in `metadata.data_incidents`. Thresholds and severities
-are centralized in `platform/jobs/data_health_config.py`. It does not add alerts,
+are centralized in `platform/jobs/data_health_config.py`. NULL checks scan only the
+logical NOT NULL contract columns in `NULL_VALUE_COLUMNS_BY_TABLE`; a positive count
+creates one `HIGH` incident per affected column. It does not add alerts,
 dashboards, automated resolution, machine-learning detection, or AI analysis.
+
+For a controlled end-to-end `NULL_VALUES` validation, use a disposable row in a
+configured raw-table candidate after health collection and before incident detection.
+For example, insert a uniquely tagged `raw.customers` row with `customer_id = NULL`,
+run `detect_data_incidents.py` for that pipeline run, and then delete only that tagged
+row. This avoids changing a real record and does not require weakening a database
+constraint. Generate context for the resulting incident ID, then rerun both jobs to
+verify that the incident and context row counts remain one. Always perform the cleanup
+even if validation fails.
 
 Apply `07_create_incident_context.sql` manually for an existing PostgreSQL volume:
 
