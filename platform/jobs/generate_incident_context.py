@@ -22,7 +22,7 @@ from incident_context_rules import (
 
 ID_NAMESPACE = uuid.UUID("14c69470-a231-4a97-8ff2-e10e445bce52")
 logger = logging.getLogger(__name__)
-LOG_PATH = Path(__file__).resolve().parents[2] / "runtime" / "logs" / "jobs" / "incident_context.log"
+LOG_PATH = Path("/opt/airflow/runtime/logs/jobs/incident_context.log")
 
 
 class IncidentContextGenerationError(RuntimeError):

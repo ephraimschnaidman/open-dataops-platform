@@ -16,7 +16,7 @@ from render_incident_context import (  # noqa: E402
     render_recommended_next_step, render_what_happened, render_why_it_matters,
 )
 from generate_incident_context import (  # noqa: E402
-    IncidentNotFoundError, UnsupportedIncidentTypeError, configure_logging,
+    LOG_PATH, IncidentNotFoundError, UnsupportedIncidentTypeError, configure_logging,
     generate_contexts, persist_context,
 )
 from incident_context_rules import (  # noqa: E402
@@ -255,6 +255,12 @@ class JobTests(unittest.TestCase):
         finally:
             for handler in root.handlers: handler.close()
             root.handlers[:] = old_handlers
+
+    def test_default_log_path_uses_writable_airflow_runtime(self):
+        self.assertEqual(
+            LOG_PATH.as_posix(),
+            "/opt/airflow/runtime/logs/jobs/incident_context.log",
+        )
 
 
 if __name__ == "__main__":
