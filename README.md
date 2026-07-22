@@ -348,6 +348,7 @@ Apply `07_create_incident_context.sql` manually for an existing PostgreSQL volum
 ```bash
 docker compose exec -T postgres psql -U dataops -d dataops -f /docker-entrypoint-initdb.d/07_create_incident_context.sql
 docker compose exec -T postgres psql -U dataops -d dataops -f /docker-entrypoint-initdb.d/08_add_schema_change_context.sql
+docker compose exec -T postgres psql -U dataops -d dataops -f /docker-entrypoint-initdb.d/09_add_null_values_context.sql
 ```
 
 Generate deterministic Version 1 context for one supported incident:
@@ -356,8 +357,8 @@ Generate deterministic Version 1 context for one supported incident:
 python platform/jobs/generate_incident_context.py "<incident-id>"
 ```
 
-Omit the incident ID to process all open `STALE_DATA` and supported schema-change
-incidents. The standalone job reads existing incident metadata and transactionally
+Omit the incident ID to process all open `STALE_DATA`, supported schema-change, and
+`NULL_VALUES` incidents. The standalone job reads existing incident metadata and transactionally
 upserts one versioned row per incident into `metadata.incident_context`. Schema-change
 context supports only added, removed, and type-changed columns. Deterministic presentation
 text is rendered by `platform/context/render_incident_context.py` when needed. Reruns

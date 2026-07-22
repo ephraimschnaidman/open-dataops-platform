@@ -6,9 +6,11 @@ from decimal import Decimal, InvalidOperation
 
 STALE_DATA_CONTEXT_VERSION = "stale_data_v1"
 SCHEMA_CHANGE_CONTEXT_VERSION = "schema_change_v1"
+NULL_VALUES_CONTEXT_VERSION = "null_values_v1"
 SUPPORTED_INCIDENT_TYPE = "STALE_DATA"
 RECOMMENDED_ACTION_CODE = "INVESTIGATE_UPSTREAM_INGESTION_AND_VERIFY_THRESHOLD"
 SCHEMA_CHANGE_ACTION_CODE = "REVIEW_SCHEMA_CHANGE_AND_VALIDATE_CONSUMERS"
+NULL_VALUES_ACTION_CODE = "REVIEW_NULL_VALUES_AND_VALIDATE_SOURCE_DATA"
 SCHEMA_CHANGE_TYPES = {
     "COLUMN_ADDED": "COLUMN_ADDED",
     "COLUMN_REMOVED": "COLUMN_REMOVED",
@@ -118,5 +120,27 @@ def generate_schema_change_context(incident: IncidentMetadata) -> IncidentContex
         observed_freshness_hours=None,
         recommended_action_code=SCHEMA_CHANGE_ACTION_CODE,
         change_type=SCHEMA_CHANGE_TYPES[incident.incident_type],
+        affected_column=incident.column_name,
+    )
+
+
+def generate_null_values_context(incident: IncidentMetadata) -> IncidentContext:
+    """Build deterministic structured Version 1 context for NULL_VALUES."""
+    if incident.incident_type != "NULL_VALUES":
+        raise IncidentContextRuleError(
+            f"Unsupported NULL_VALUES incident type {incident.incident_type!r}"
+        )
+    if not incident.severity:
+        raise IncidentContextRuleError("NULL_VALUES context requires severity")
+    if not incident.column_name:
+        raise IncidentContextRuleError("NULL_VALUES context requires affected column")
+    return IncidentContext(
+        context_version=NULL_VALUES_CONTEXT_VERSION,
+        qualified_table=qualify_table(incident.table_schema, incident.table_name),
+        evaluation_status="UNKNOWN",
+        severity=incident.severity,
+        expected_freshness_hours=None,
+        observed_freshness_hours=None,
+        recommended_action_code=NULL_VALUES_ACTION_CODE,
         affected_column=incident.column_name,
     )

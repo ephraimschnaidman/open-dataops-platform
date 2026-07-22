@@ -21,7 +21,8 @@ from generate_incident_context import (  # noqa: E402
 )
 from incident_context_rules import (  # noqa: E402
     IncidentContextRuleError, IncidentMetadata, RECOMMENDED_ACTION_CODE,
-    SCHEMA_CHANGE_ACTION_CODE, evaluate_freshness, generate_schema_change_context,
+    NULL_VALUES_ACTION_CODE, SCHEMA_CHANGE_ACTION_CODE, evaluate_freshness,
+    generate_null_values_context, generate_schema_change_context,
     generate_stale_data_context, parse_freshness_hours,
 )
 
@@ -42,6 +43,14 @@ def incident_row(**overrides):
     return (INCIDENT_ID, i.incident_type, i.severity, i.table_schema, i.table_name,
             i.column_name,
             i.expected_value, i.observed_value, i.incident_status)
+
+
+def null_values_incident(**overrides):
+    values = dict(incident_type="NULL_VALUES", severity="HIGH", table_schema="raw",
+                  table_name="customers", column_name="email", expected_value="0",
+                  observed_value="12", incident_status="OPEN")
+    values.update(overrides)
+    return IncidentMetadata(**values)
 
 
 class FakeResult:
@@ -104,6 +113,22 @@ class RuleTests(unittest.TestCase):
         with self.assertRaisesRegex(IncidentContextRuleError, "affected column"):
             generate_schema_change_context(stale_incident(incident_type="COLUMN_ADDED"))
 
+    def test_null_values_structured_context(self):
+        context = generate_null_values_context(null_values_incident())
+        self.assertEqual(context.context_version, "null_values_v1")
+        self.assertEqual(context.qualified_table, "raw.customers")
+        self.assertEqual(context.severity, "HIGH")
+        self.assertEqual(context.evaluation_status, "UNKNOWN")
+        self.assertEqual(context.affected_column, "email")
+        self.assertEqual(context.recommended_action_code, NULL_VALUES_ACTION_CODE)
+        self.assertIsNone(context.change_type)
+        self.assertIsNone(context.expected_freshness_hours)
+        self.assertEqual(context, generate_null_values_context(null_values_incident()))
+
+    def test_null_values_requires_column(self):
+        with self.assertRaisesRegex(IncidentContextRuleError, "affected column"):
+            generate_null_values_context(null_values_incident(column_name=None))
+
 
 class RendererTests(unittest.TestCase):
     def test_deterministic_safe_rendering(self):
@@ -134,6 +159,15 @@ class RendererTests(unittest.TestCase):
             self.assertEqual(render_recommended_next_step(context),
                 "Review the schema change and verify that downstream consumers are expected to handle it.")
 
+    def test_null_values_rendering(self):
+        context = generate_null_values_context(null_values_incident())
+        self.assertEqual(render_what_happened(context),
+                         "Unexpected NULL values were detected in raw.customers.email.")
+        self.assertEqual(render_why_it_matters(context),
+                         "Data quality may be affected and downstream consumers may not expect NULL values.")
+        self.assertEqual(render_recommended_next_step(context),
+                         "Review the affected column and verify whether NULL values are expected from the source data.")
+
 
 class JobTests(unittest.TestCase):
     def test_missing_and_unsupported_incidents(self):
@@ -162,7 +196,37 @@ class JobTests(unittest.TestCase):
         generate_contexts(connection, None, NOW)
         self.assertEqual(connection.executions[0][1],
                          ("STALE_DATA", "COLUMN_ADDED", "COLUMN_REMOVED",
-                          "COLUMN_TYPE_CHANGED", "DATA_TYPE_CHANGED", "OPEN"))
+                          "COLUMN_TYPE_CHANGED", "DATA_TYPE_CHANGED", "NULL_VALUES", "OPEN"))
+
+    def test_null_values_persist_is_idempotent_and_logged(self):
+        connection = FakeConnection()
+        context = generate_null_values_context(null_values_incident())
+        with self.assertLogs("generate_incident_context", level="INFO") as captured:
+            first = persist_context(connection, INCIDENT_ID, context, NOW)
+            second = persist_context(connection, INCIDENT_ID, context, NOW)
+        self.assertEqual(first, second)
+        self.assertTrue(all("context for incident" in line for line in captured.output))
+        sql, params = connection.executions[0]
+        self.assertIn("ON CONFLICT (incident_id, context_version)", sql)
+        self.assertIn("generated_at = EXCLUDED.generated_at", sql)
+        self.assertIn("updated_at = CURRENT_TIMESTAMP", sql)
+        self.assertNotIn("created_at =", sql)
+        self.assertEqual(params[2], "null_values_v1")
+        self.assertEqual(params[3:6], ("raw.customers", "UNKNOWN", "HIGH"))
+        self.assertEqual(params[8:11], (NULL_VALUES_ACTION_CODE, None, "email"))
+
+    def test_null_values_job_generation_is_logged(self):
+        connection = FakeConnection([incident_row(
+            incident_type="NULL_VALUES", table_name="customers", column_name="email",
+            expected_value="0", observed_value="12",
+        )])
+        with self.assertLogs("generate_incident_context", level="INFO") as captured:
+            context_ids = generate_contexts(connection, INCIDENT_ID, NOW)
+        self.assertEqual(len(context_ids), 1)
+        _, params = connection.executions[1]
+        self.assertEqual(params[2], "null_values_v1")
+        self.assertEqual(params[8:11], (NULL_VALUES_ACTION_CODE, None, "email"))
+        self.assertTrue(any("Processing incident" in line for line in captured.output))
 
     def test_schema_change_persist_is_idempotent_and_logged(self):
         connection = FakeConnection()

@@ -5,6 +5,7 @@ from typing import Protocol
 
 ACTION_CODE = "INVESTIGATE_UPSTREAM_INGESTION_AND_VERIFY_THRESHOLD"
 SCHEMA_CHANGE_ACTION_CODE = "REVIEW_SCHEMA_CHANGE_AND_VALIDATE_CONSUMERS"
+NULL_VALUES_ACTION_CODE = "REVIEW_NULL_VALUES_AND_VALIDATE_SOURCE_DATA"
 
 
 class StructuredIncidentContext(Protocol):
@@ -23,6 +24,13 @@ def _display(value: Decimal | None) -> str:
 
 
 def render_what_happened(context: StructuredIncidentContext) -> str:
+    if context.recommended_action_code == NULL_VALUES_ACTION_CODE:
+        if not context.affected_column:
+            raise ValueError("NULL_VALUES context requires an affected column")
+        return (
+            "Unexpected NULL values were detected in "
+            f"{context.qualified_table}.{context.affected_column}."
+        )
     if context.change_type is not None:
         verb = {
             "COLUMN_ADDED": "was added",
@@ -48,6 +56,11 @@ def render_what_happened(context: StructuredIncidentContext) -> str:
 
 
 def render_why_it_matters(context: StructuredIncidentContext) -> str:
+    if context.recommended_action_code == NULL_VALUES_ACTION_CODE:
+        return (
+            "Data quality may be affected and downstream consumers may not expect "
+            "NULL values."
+        )
     if context.change_type is not None:
         return "The table structure has changed and may affect downstream consumers."
     detail = {
@@ -62,6 +75,11 @@ def render_why_it_matters(context: StructuredIncidentContext) -> str:
 
 
 def render_recommended_next_step(context: StructuredIncidentContext) -> str:
+    if context.recommended_action_code == NULL_VALUES_ACTION_CODE:
+        return (
+            "Review the affected column and verify whether NULL values are expected "
+            "from the source data."
+        )
     if context.recommended_action_code == SCHEMA_CHANGE_ACTION_CODE:
         return (
             "Review the schema change and verify that downstream consumers are expected "

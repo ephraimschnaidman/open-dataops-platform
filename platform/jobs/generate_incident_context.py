@@ -15,6 +15,7 @@ from incident_context_rules import (
     IncidentContext,
     IncidentMetadata,
     SCHEMA_CHANGE_TYPES,
+    generate_null_values_context,
     generate_schema_change_context,
     generate_stale_data_context,
 )
@@ -65,9 +66,9 @@ def load_incidents(
     else:
         rows = conn.execute(
             f"""SELECT {columns} FROM metadata.data_incidents
-                WHERE incident_type IN (%s, %s, %s, %s, %s) AND incident_status = %s
+                WHERE incident_type IN (%s, %s, %s, %s, %s, %s) AND incident_status = %s
                 ORDER BY detected_at, incident_id""",
-            ("STALE_DATA", *SCHEMA_CHANGE_TYPES, "OPEN"),
+            ("STALE_DATA", *SCHEMA_CHANGE_TYPES, "NULL_VALUES", "OPEN"),
         ).fetchall()
     return [_to_incident(row) for row in rows]
 
@@ -112,10 +113,12 @@ def generate_contexts(conn: psycopg.Connection, incident_id: uuid.UUID | None,
             context = generate_stale_data_context(incident)
         elif incident.incident_type in SCHEMA_CHANGE_TYPES:
             context = generate_schema_change_context(incident)
+        elif incident.incident_type == "NULL_VALUES":
+            context = generate_null_values_context(incident)
         else:
             raise UnsupportedIncidentTypeError(
                 f"Incident {current_id} has unsupported type {incident.incident_type!r}; "
-                "only STALE_DATA and SCHEMA_CHANGE v1 are supported"
+                "only STALE_DATA, SCHEMA_CHANGE, and NULL_VALUES v1 are supported"
             )
         context_ids.append(persist_context(conn, current_id, context, generated_at))
     return context_ids
