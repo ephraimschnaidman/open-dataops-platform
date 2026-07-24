@@ -49,11 +49,35 @@ def truncate_raw_tables(conn: psycopg.Connection) -> None:
     conn.execute(sql.SQL("TRUNCATE TABLE {}").format(sql.SQL(", ").join(identifiers)))
 
 
+def read_csv_header(csv_path: Path) -> list[str]:
+    with csv_path.open("r", encoding="utf-8", newline="") as csv_file:
+        header = next(csv.reader(csv_file), None)
+
+    if not header:
+        raise ValueError(f"Missing CSV header: {csv_path}")
+    if any(not column.strip() for column in header):
+        raise ValueError(f"CSV header contains an empty column name: {csv_path}")
+
+    duplicate_columns = sorted(
+        column for column in set(header) if header.count(column) > 1
+    )
+    if duplicate_columns:
+        duplicates = ", ".join(repr(column) for column in duplicate_columns)
+        raise ValueError(f"CSV header contains duplicate column names ({duplicates}): {csv_path}")
+
+    return header
+
+
 def load_csv(conn: psycopg.Connection, csv_path: Path, table_name: str) -> int:
     if not csv_path.exists():
         raise FileNotFoundError(f"Missing source CSV: {csv_path}")
-    statement = sql.SQL("COPY {} FROM STDIN WITH (FORMAT CSV, HEADER TRUE)").format(
-        sql.Identifier("raw", table_name))
+    columns = read_csv_header(csv_path)
+    statement = sql.SQL(
+        "COPY {} ({}) FROM STDIN WITH (FORMAT CSV, HEADER TRUE)"
+    ).format(
+        sql.Identifier("raw", table_name),
+        sql.SQL(", ").join(sql.Identifier(column) for column in columns),
+    )
     with csv_path.open("r", encoding="utf-8", newline="") as csv_file, conn.cursor() as cur:
         with cur.copy(statement) as copy:
             while data := csv_file.read(8192):
