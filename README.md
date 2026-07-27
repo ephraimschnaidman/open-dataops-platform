@@ -4,23 +4,36 @@ Open DataOps Platform is an open-source, production-style data engineering platf
 
 The project separates reusable platform capabilities from example business domains. The first domain is e-commerce, with room to add fintech, SaaS, logistics, and other domains later.
 
-## Current Phase
+## Core Pipeline Platform Status: VALIDATED
 
-This milestone establishes data incident detection around the PostgreSQL, dbt, and Airflow analytics pipeline:
+Tasks #1 through #5 are complete and have passed validation. The core pipeline
+validation phase is complete.
 
-- Docker Compose for a local Postgres warehouse
-- A persistent Docker volume for database state
-- Warehouse schemas created automatically on first database startup
-- A simple service boundary so future containers can connect over Docker networking
-- Python bootstrap loader for CSV files in `domains/ecommerce/sample_data/`
-- dbt staging views that clean and standardize source-like raw e-commerce tables
-- dimensional marts and tested aggregate tables for ecommerce analytics
-- Apache Airflow with LocalExecutor and a manually triggered pipeline DAG
-- centralized Airflow run and dbt node results in the PostgreSQL `metadata` schema
-- row-count, business-timestamp freshness, and schema measurements for important tables
-- retry-safe incident detection for freshness, row-count changes, and schema drift
-- deterministic, versioned context generation for stale-data incidents
-- a provisioned Grafana OSS dashboard for operational metadata, health, and incidents
+The platform currently includes:
+
+- Dockerized infrastructure
+- PostgreSQL data storage
+- Airflow orchestration
+- dbt transformations and tests
+- Metadata collection
+- Data health metrics
+- Incident detection
+- Schema snapshot and schema drift detection
+- Explicit-column `COPY` loading
+- Schema-drift-tolerant bootstrap behavior
+- Idempotent incident and metadata processing
+- Controlled failure recovery
+- End-to-end dependency validation
+
+Task #5 validated controlled failure and recovery behavior without identifying
+any production-blocking defects. See the
+[project status](docs/project_status.md), [validation report](docs/validation.md),
+and [roadmap](docs/roadmap.md) for completion evidence, release boundaries, and
+the next planned task.
+
+The next task is **Task #6 – Platform API**, currently **NEXT / NOT STARTED**.
+The API is a future capability; no platform API or API authentication is currently
+implemented.
 
 ## Repository Layout
 
@@ -138,7 +151,10 @@ python scripts/load_raw_ecommerce_data.py
 python scripts/bootstrap_raw_ecommerce_data.py
 ```
 
-Future milestones will introduce orchestrated and incremental ingestion. This bootstrap loader is intentionally simple and is not a production ingestion pipeline.
+Future milestones may introduce incremental ingestion. The current bootstrap loader
+is orchestrated by Airflow as part of the local pipeline, but it remains an
+intentionally simple, deterministic full-refresh loader rather than a production
+ingestion service.
 
 ## Transform E-commerce Data With dbt
 
