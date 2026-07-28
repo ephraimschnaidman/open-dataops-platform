@@ -29,6 +29,58 @@ No production-blocking defects were identified.
 
 Tasks #1 through #5 are **Complete** and **PASS**. With Task #5 complete, the
 core pipeline validation phase is closed. This conclusion applies to the current
-pipeline scope documented in [Project Status](project_status.md); it does not
-assert completion of future API, authentication, deployment, alerting, or CI/CD
-capabilities.
+pipeline scope documented in [Project Status](project_status.md).
+
+## Task #6 – Platform API Foundation
+
+**Status: PASS**
+
+### Final acceptance result
+
+- Phase 1 repository and data-model assessment passed.
+- Phase 2 API skeleton and Docker integration passed.
+- Phase 3 incident, metric, schema snapshot, dbt metadata, and pipeline endpoint
+  implementation passed.
+- All 14 acceptance criteria passed.
+- All 76 focused API tests passed.
+- The full repository suite passed all 128 tests.
+- The standalone API container builds, starts, and becomes healthy.
+- PostgreSQL connectivity was validated.
+- Live endpoint totals, filters, and representative rows were compared with
+  their persisted PostgreSQL sources.
+- Invalid query parameters return HTTP 422.
+- A missing incident returns HTTP 404.
+- Isolated database failures return safe HTTP 503 responses without exposing
+  database details.
+- `/docs` and `/openapi.json` are available.
+- Existing endpoints remained healthy as each endpoint was added.
+- A fresh Airflow regression run completed successfully through the deployed
+  task chain:
+
+  ```text
+  bootstrap_raw_data
+  -> run_dbt
+  -> test_dbt
+  -> collect_dbt_metadata
+  -> collect_data_health_metrics
+  -> detect_data_incidents
+  ```
+
+- The dbt run and dbt test tasks passed.
+- The API remained healthy after pipeline execution.
+- Existing Tasks #1 through #5 functionality remained intact.
+- No blocking defects were identified.
+
+The API validation applies to its read-only PostgreSQL metadata
+boundary, documented in [Platform API Architecture](architecture/platform_api.md).
+It does not add authentication, authorization, execution controls, mutations,
+frontend, or cloud deployment capabilities.
+
+Task #6 is complete and PASS.
+
+### Known pipeline-history limitation
+
+`metadata.pipeline_runs` represents runs persisted by the metadata collection
+stage. It is not guaranteed to contain Airflow DAG runs that fail before
+metadata collection occurs. Complete execution auditing, including failed runs
+that terminate early, remains a deferred enhancement.
