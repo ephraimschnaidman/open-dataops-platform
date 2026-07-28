@@ -4,10 +4,9 @@ Open DataOps Platform is an open-source, production-style data engineering platf
 
 The project separates reusable platform capabilities from example business domains. The first domain is e-commerce, with room to add fintech, SaaS, logistics, and other domains later.
 
-## Core Pipeline Platform Status: VALIDATED
+## Platform Status: VALIDATED
 
-Tasks #1 through #5 are complete and have passed validation. The core pipeline
-validation phase is complete.
+Tasks #1 through #6 are complete and have passed validation.
 
 The platform currently includes:
 
@@ -24,21 +23,19 @@ The platform currently includes:
 - Idempotent incident and metadata processing
 - Controlled failure recovery
 - End-to-end dependency validation
+- Read-only FastAPI access to persisted operational metadata
 
-Task #5 validated controlled failure and recovery behavior without identifying
-any production-blocking defects. See the
+Task #6 added and validated the standalone operational API without changing
+Airflow, dbt, platform-job, or warehouse behavior. See the
 [project status](docs/project_status.md), [validation report](docs/validation.md),
 and [roadmap](docs/roadmap.md) for completion evidence, release boundaries, and
-the next planned task.
-
-The next task is **Task #6 – Platform API**, currently **NEXT / NOT STARTED**.
-The API is a future capability; no platform API or API authentication is currently
-implemented.
+deferred enhancements.
 
 ## Repository Layout
 
 ```text
 platform/
+  api/              Read-only FastAPI service for operational metadata
   airflow/          Airflow image, dependencies, and orchestration DAGs
   dbt/              dbt Core project for warehouse transformations
   jobs/             Reusable, orchestrator-independent job entrypoints
@@ -105,6 +102,28 @@ You can also verify the database connection directly:
 ```bash
 docker compose exec postgres psql -U dataops -d dataops -c "SELECT current_database(), current_user;"
 ```
+
+## Operational API
+
+The Docker Compose stack includes a read-only FastAPI service at
+[http://localhost:8000](http://localhost:8000). It serves JSON from operational
+metadata already persisted in PostgreSQL; it does not execute pipelines, run
+dbt, recalculate health metrics, detect schema drift, or mutate incidents.
+
+Available resources cover:
+
+- service and database health;
+- incidents;
+- data health metrics;
+- schema snapshots;
+- dbt execution metadata; and
+- recorded pipeline history.
+
+Interactive OpenAPI documentation is available at
+[http://localhost:8000/docs](http://localhost:8000/docs). See
+[Platform API Architecture](docs/architecture/platform_api.md) for the service
+boundary, technical design, endpoint summary, and known pipeline-history
+limitation.
 
 ## Bootstrap E-commerce Raw Data
 
@@ -427,3 +446,8 @@ docker compose up -d
 ## Architecture Notes
 
 Airflow and the jobs share no business implementation. This keeps the job entrypoints usable from the command line, CI, and future orchestration systems.
+
+Airflow, dbt, and platform jobs write operational metadata to PostgreSQL. The
+read-only FastAPI service consumes that persisted metadata for JSON clients.
+Detailed API architecture is documented in
+[Platform API Architecture](docs/architecture/platform_api.md).
