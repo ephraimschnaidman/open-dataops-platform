@@ -128,6 +128,11 @@ class ApiHealthTests(unittest.IsolatedAsyncioTestCase):
             "POSTGRES_DB": "warehouse",
             "POSTGRES_USER": "reader",
             "POSTGRES_PASSWORD": "not-hard-coded",
+            "API_JWT_SECRET_KEY": (
+                "phase-2-test-secret-with-more-than-32-characters"
+            ),
+            "API_JWT_ISSUER": "test-issuer",
+            "API_JWT_AUDIENCE": "test-audience",
         }
         with patch.dict(os.environ, environment, clear=True):
             settings = Settings.from_environment()

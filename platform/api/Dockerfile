@@ -1,14 +1,16 @@
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/platform
 
 WORKDIR /app
 
 COPY platform/api/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --requirement requirements.txt
 
-COPY platform/api ./api
+COPY platform/__init__.py ./platform/__init__.py
+COPY platform/api ./platform/api
 
 RUN addgroup --system api && adduser --system --ingroup api api \
     && chown --recursive api:api /app

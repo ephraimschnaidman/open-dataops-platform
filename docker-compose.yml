@@ -61,6 +61,11 @@ services:
       POSTGRES_DB: dataops
       POSTGRES_USER: dataops
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      API_JWT_SECRET_KEY: ${API_JWT_SECRET_KEY:?Set API_JWT_SECRET_KEY in .env}
+      API_JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${API_JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      API_JWT_ISSUER: ${API_JWT_ISSUER:-open-dataops-platform-api}
+      API_JWT_AUDIENCE: ${API_JWT_AUDIENCE:-open-dataops-platform-clients}
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
@@ -75,6 +80,27 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api-db-init:
+        condition: service_completed_successfully
+
+  api-db-init:
+    image: postgres:16
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: dataops
+      PGUSER: dataops
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    command:
+      - psql
+      - --set=ON_ERROR_STOP=1
+      - --file=/opt/open-dataops/10_create_security_tables.sql
+    volumes:
+      - ./platform/warehouse/init/10_create_security_tables.sql:/opt/open-dataops/10_create_security_tables.sql:ro
     depends_on:
       postgres:
         condition: service_healthy
