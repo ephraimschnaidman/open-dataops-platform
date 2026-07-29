@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "platform"))
 
 from api.main import app  # noqa: E402
+from api.auth_dependencies import get_current_active_user  # noqa: E402
 from api.repositories.incidents import IncidentFilters  # noqa: E402
 from api.routes.incidents import get_incident_service  # noqa: E402
 from api.schemas.incidents import (  # noqa: E402
@@ -23,6 +24,7 @@ from api.services.incidents import (  # noqa: E402
     IncidentNotFoundError,
     IncidentService,
 )
+from tests.api_auth_test_helpers import ACTIVE_TEST_USER  # noqa: E402
 
 INCIDENT_ID = UUID("11111111-1111-4111-8111-111111111111")
 PIPELINE_RUN_ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -127,6 +129,9 @@ class IncidentApiRouteTests(unittest.TestCase):
     def setUp(self):
         self.service = StubIncidentService()
         app.dependency_overrides[get_incident_service] = lambda: self.service
+        app.dependency_overrides[get_current_active_user] = (
+            lambda: ACTIVE_TEST_USER
+        )
         self.client = TestClient(app)
 
     def tearDown(self):

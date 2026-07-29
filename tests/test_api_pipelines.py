@@ -10,6 +10,7 @@ from pydantic import ValidationError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "platform"))
 
 from api.main import app  # noqa: E402
+from api.auth_dependencies import get_current_active_user  # noqa: E402
 from api.repositories.pipelines import PipelineFilters, PipelineRepository  # noqa: E402
 from api.routes.pipelines import get_pipeline_service  # noqa: E402
 from api.schemas.pipelines import (  # noqa: E402
@@ -18,6 +19,7 @@ from api.schemas.pipelines import (  # noqa: E402
     PipelineResponse,
 )
 from api.services.pipelines import PipelineService  # noqa: E402
+from tests.api_auth_test_helpers import ACTIVE_TEST_USER  # noqa: E402
 
 PIPELINE_RUN_ID = UUID("22222222-2222-4222-8222-222222222222")
 NOW = datetime(2026, 7, 28, 12, 0, tzinfo=timezone.utc)
@@ -122,6 +124,9 @@ class PipelineRouteTests(unittest.TestCase):
     def setUp(self):
         self.service = StubService()
         app.dependency_overrides[get_pipeline_service] = lambda: self.service
+        app.dependency_overrides[get_current_active_user] = (
+            lambda: ACTIVE_TEST_USER
+        )
         self.client = TestClient(app)
 
     def tearDown(self):

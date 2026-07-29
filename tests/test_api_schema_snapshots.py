@@ -10,6 +10,7 @@ from pydantic import ValidationError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "platform"))
 
 from api.main import app  # noqa: E402
+from api.auth_dependencies import get_current_active_user  # noqa: E402
 from api.repositories.schema_snapshots import (  # noqa: E402
     SchemaSnapshotFilters,
     SchemaSnapshotRepository,
@@ -21,6 +22,7 @@ from api.schemas.schema_snapshots import (  # noqa: E402
     SchemaSnapshotResponse,
 )
 from api.services.schema_snapshots import SchemaSnapshotService  # noqa: E402
+from tests.api_auth_test_helpers import ACTIVE_TEST_USER  # noqa: E402
 
 SNAPSHOT_ID = UUID("11111111-1111-4111-8111-111111111111")
 SECOND_SNAPSHOT_ID = UUID("33333333-3333-4333-8333-333333333333")
@@ -139,6 +141,9 @@ class SchemaSnapshotApiRouteTests(unittest.TestCase):
     def setUp(self):
         self.service = StubSchemaSnapshotService()
         app.dependency_overrides[get_schema_snapshot_service] = lambda: self.service
+        app.dependency_overrides[get_current_active_user] = (
+            lambda: ACTIVE_TEST_USER
+        )
         self.client = TestClient(app)
 
     def tearDown(self):

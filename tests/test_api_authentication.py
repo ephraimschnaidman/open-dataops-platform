@@ -386,11 +386,13 @@ class DocumentationAndPublicEndpointTests(unittest.TestCase):
                 self.assertEqual(client.get(path).status_code, 404)
         client.close()
 
-    def test_public_routes_have_no_openapi_security_requirement(self):
+    def test_openapi_security_requirements_match_phase_4_policy(self):
         schema = create_app(make_settings()).openapi()
         public_operations = (
             ("/health", "get"),
             ("/api/v1/auth/token", "post"),
+        )
+        protected_operations = (
             ("/api/v1/incidents", "get"),
             ("/api/v1/metrics", "get"),
             ("/api/v1/schema-snapshots", "get"),
@@ -402,6 +404,12 @@ class DocumentationAndPublicEndpointTests(unittest.TestCase):
                 self.assertNotIn(
                     "security",
                     schema["paths"][path][method],
+                )
+        for path, method in protected_operations:
+            with self.subTest(path=path):
+                self.assertEqual(
+                    schema["paths"][path][method]["security"],
+                    [{"OAuth2PasswordBearer": []}],
                 )
 
 

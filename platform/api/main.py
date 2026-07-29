@@ -4,9 +4,10 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.openapi.utils import get_openapi
 
+from api.auth_dependencies import require_roles
 from api.config import Settings, get_settings
 from api.database import create_database_pool
 from api.logging_config import configure_logging
@@ -21,6 +22,12 @@ from api.routes.schema_snapshots import router as schema_snapshots_router
 settings = get_settings()
 configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
+
+require_operational_access = require_roles(
+    "Admin",
+    "Operator",
+    "ReadOnly",
+)
 
 
 @asynccontextmanager
@@ -53,11 +60,27 @@ def create_app(application_settings: Settings) -> FastAPI:
     application.state.settings = application_settings
     application.include_router(health_router)
     application.include_router(auth_router)
-    application.include_router(incidents_router)
-    application.include_router(metrics_router)
-    application.include_router(schema_snapshots_router)
-    application.include_router(dbt_metadata_router)
-    application.include_router(pipelines_router)
+    operational_dependencies = [Depends(require_operational_access)]
+    application.include_router(
+        incidents_router,
+        dependencies=operational_dependencies,
+    )
+    application.include_router(
+        metrics_router,
+        dependencies=operational_dependencies,
+    )
+    application.include_router(
+        schema_snapshots_router,
+        dependencies=operational_dependencies,
+    )
+    application.include_router(
+        dbt_metadata_router,
+        dependencies=operational_dependencies,
+    )
+    application.include_router(
+        pipelines_router,
+        dependencies=operational_dependencies,
+    )
 
     def custom_openapi() -> dict:
         if application.openapi_schema:

@@ -10,6 +10,7 @@ from pydantic import ValidationError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "platform"))
 
 from api.main import app  # noqa: E402
+from api.auth_dependencies import get_current_active_user  # noqa: E402
 from api.repositories.metrics import MetricFilters  # noqa: E402
 from api.routes.metrics import get_metric_service  # noqa: E402
 from api.schemas.metrics import (  # noqa: E402
@@ -18,6 +19,7 @@ from api.schemas.metrics import (  # noqa: E402
     MetricResponse,
 )
 from api.services.metrics import MetricService  # noqa: E402
+from tests.api_auth_test_helpers import ACTIVE_TEST_USER  # noqa: E402
 
 METRIC_ID = UUID("11111111-1111-4111-8111-111111111111")
 PIPELINE_RUN_ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -76,6 +78,9 @@ class MetricApiRouteTests(unittest.TestCase):
     def setUp(self):
         self.service = StubMetricService()
         app.dependency_overrides[get_metric_service] = lambda: self.service
+        app.dependency_overrides[get_current_active_user] = (
+            lambda: ACTIVE_TEST_USER
+        )
         self.client = TestClient(app)
 
     def tearDown(self):

@@ -12,6 +12,8 @@ from api.repositories.users import UserRepository
 from api.schemas.auth import CurrentUser
 from api.security import decode_access_token
 
+DECLARED_ROLES = frozenset({"Admin", "Operator", "ReadOnly"})
+
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/api/v1/auth/token",
     auto_error=False,
@@ -67,3 +69,32 @@ async def get_current_active_user(
     if not current_user.is_active:
         raise credentials_exception()
     return current_user
+
+
+def require_roles(*allowed_roles: str):
+    if not allowed_roles:
+        raise ValueError("At least one required role must be declared")
+    normalized_roles = tuple(role.strip() for role in allowed_roles)
+    if any(not role for role in normalized_roles):
+        raise ValueError("Required role names must be nonblank")
+    unknown_roles = sorted(set(normalized_roles) - DECLARED_ROLES)
+    if unknown_roles:
+        raise ValueError(
+            f"Unknown required role name(s): {', '.join(unknown_roles)}"
+        )
+    allowed_role_set = frozenset(normalized_roles)
+
+    async def enforce_required_roles(
+        current_user: Annotated[
+            CurrentUser,
+            Depends(get_current_active_user),
+        ],
+    ) -> CurrentUser:
+        if allowed_role_set.isdisjoint(current_user.roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return current_user
+
+    return enforce_required_roles
