@@ -1,9 +1,9 @@
 # Roadmap
 
 The core pipeline validation phase (Tasks #1 through #5) is complete and has
-passed. Task #6 is also complete and has passed final acceptance. Items under
-Future Enhancements are planned work and are not represented as current platform
-capabilities.
+passed. Tasks #6 and #7 are also complete and have passed final acceptance.
+Items under Future Enhancements are planned work and are not represented as
+current platform capabilities.
 
 ## Completed: Task #6 – Platform API
 
@@ -45,7 +45,33 @@ block the current validated release:
 - Operational alerting
 - Metadata retention policies
 - Recovery runbook
+- Refresh tokens and per-token revocation
+- OAuth providers and SSO
+- Multi-factor authentication (MFA)
+- Password reset and public registration
+- User-administration workflows
+- A differentiated permissions model
+- Multi-tenancy
 
 Additional production capabilities such as deployment automation and CI/CD remain
 future plans unless they are explicitly documented as completed in a later
 release.
+
+## Completed: Task #7 – Authentication and Authorization
+
+**Status: COMPLETE / PASS**
+
+Task #7 adds PostgreSQL-backed users and roles, Argon2 password hashing,
+short-lived JWT access tokens, OAuth2 password-form login, configurable
+documentation exposure, secure interactive provisioning, and reusable
+router-level RBAC. `Admin`, `Operator`, and `ReadOnly` currently share read
+access to the operational API.
+
+Final acceptance passed all 14 criteria, 54 focused
+security/authentication/RBAC tests, the 182-test repository suite, and a fresh
+Airflow/dbt regression. Environment-based secret configuration, live login,
+JWT issuance, authenticated access, anonymous rejection, and service health
+were verified. No production-blocking defects were identified.
+
+Future authentication capabilities are listed under Future Enhancements and
+remain outside Task #7.

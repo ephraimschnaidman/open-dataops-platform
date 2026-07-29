@@ -6,7 +6,8 @@ The project separates reusable platform capabilities from example business domai
 
 ## Platform Status: VALIDATED
 
-Tasks #1 through #6 are complete and have passed validation.
+Tasks #1 through #7 are complete and have passed validation. Task #7 completed
+the authentication and authorization foundation.
 
 The platform currently includes:
 
@@ -24,6 +25,10 @@ The platform currently includes:
 - Controlled failure recovery
 - End-to-end dependency validation
 - Read-only FastAPI access to persisted operational metadata
+- OAuth2 Password authentication with Argon2 password hashing
+- Short-lived JWT access tokens and role-based access control (RBAC)
+- Protected operational endpoints with public health and authentication routes
+- Configurable OpenAPI documentation and secure user provisioning CLI
 
 Task #6 added and validated the standalone operational API without changing
 Airflow, dbt, platform-job, or warehouse behavior. See the
@@ -50,7 +55,9 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
-Edit `.env` and set `POSTGRES_PASSWORD` to the local warehouse password you want to use.
+Edit `.env` and replace every example secret. Generate
+`API_JWT_SECRET_KEY` as a private random value of at least 32 characters; never
+commit it.
 
 Start PostgreSQL and Airflow (the first build can take several minutes):
 
@@ -72,6 +79,7 @@ On first startup, Postgres runs SQL files from `platform/warehouse/init` in file
 - `staging`
 - `marts`
 - `metadata`
+- `security`
 
 The initialization also creates a dedicated `airflow` metadata database. Airflow metadata is separate from the `dataops` warehouse database.
 
@@ -105,7 +113,7 @@ docker compose exec postgres psql -U dataops -d dataops -c "SELECT current_datab
 
 ## Operational API
 
-The Docker Compose stack includes a read-only FastAPI service at
+The Docker Compose stack includes a read-only FastAPI REST API at
 [http://localhost:8000](http://localhost:8000). It serves JSON from operational
 metadata already persisted in PostgreSQL; it does not execute pipelines, run
 dbt, recalculate health metrics, detect schema drift, or mutate incidents.
@@ -119,11 +127,59 @@ Available resources cover:
 - dbt execution metadata; and
 - recorded pipeline history.
 
+`GET /health` and the OAuth2 Password authentication endpoint
+`POST /api/v1/auth/token` are public. The incidents, metrics,
+schema snapshots, dbt metadata, and pipeline-history endpoints require an
+active API user assigned at least one of `Admin`, `Operator`, or `ReadOnly`.
+All three roles currently have read access; reusable RBAC dependencies support
+future differentiated permissions.
+
 Interactive OpenAPI documentation is available at
-[http://localhost:8000/docs](http://localhost:8000/docs). See
+[http://localhost:8000/docs](http://localhost:8000/docs) only when
+`API_DOCS_ENABLED=true`. See
 [Platform API Architecture](docs/architecture/platform_api.md) for the service
 boundary, technical design, endpoint summary, and known pipeline-history
 limitation.
+
+### API authentication
+
+The API reads `API_JWT_SECRET_KEY`, `API_JWT_ACCESS_TOKEN_EXPIRE_MINUTES`,
+`API_JWT_ISSUER`, `API_JWT_AUDIENCE`, and `API_DOCS_ENABLED`. The signing secret
+is required, must be a non-placeholder value of at least 32 characters, and
+must remain private. Access tokens default to a 30-minute lifetime.
+
+There is no default API user or public registration endpoint. Provision a user
+with one or more existing roles; the password is prompted twice and is never a
+command-line argument:
+
+```bash
+docker compose exec api python -m platform.api.cli.create_user \
+  example.operator --role Operator
+```
+
+Fresh PostgreSQL volumes create the `security` schema through ordered
+initialization scripts. The one-shot `api-db-init` service applies the same
+transactional, idempotent migration to existing volumes and seeds the three
+roles, but never users.
+
+Request a token with OAuth2 form data:
+
+```bash
+curl --request POST http://localhost:8000/api/v1/auth/token \
+  --header "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "username=example.operator" \
+  --data-urlencode "password=<secret>"
+```
+
+Use the returned token without logging or committing it:
+
+```bash
+curl http://localhost:8000/api/v1/incidents \
+  --header "Authorization: Bearer <access-token>"
+```
+
+When documentation is enabled, Swagger UI's **Authorize** action uses this same
+username/password flow.
 
 ## Bootstrap E-commerce Raw Data
 

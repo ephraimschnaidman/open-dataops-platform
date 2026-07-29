@@ -84,3 +84,62 @@ Task #6 is complete and PASS.
 stage. It is not guaranteed to contain Airflow DAG runs that fail before
 metadata collection occurs. Complete execution auditing, including failed runs
 that terminate early, remains a deferred enhancement.
+
+## Task #7 – Authentication & Authorization Foundation
+
+**Status: PASS**
+
+Implemented phases:
+
+- repository architecture and authentication design;
+- normalized security schema and existing-volume migration;
+- Argon2/JWT utilities and secure interactive user provisioning;
+- OAuth2 password-form token issuance and current-user dependencies; and
+- database-authoritative RBAC protection for all operational routers.
+
+Completed validation:
+
+- 54 focused authentication, authorization, and security tests passed.
+- The full repository suite passed all 182 tests.
+- Compile/import and OpenAPI generation checks passed.
+- OAuth2 password flow uses `/api/v1/auth/token`; protected operations advertise
+  bearer security while health and token operations remain public.
+- Live Admin, Operator, and ReadOnly authentication and access passed for every
+  protected resource.
+- Unknown-user, incorrect-password, inactive-user, malformed-token,
+  expired-token, missing-token, and role-failure cases returned the expected
+  HTTP 401 or 403 responses.
+- Authenticated invalid-query and missing-incident cases returned HTTP 422 and
+  404; isolated database failures returned safe HTTP 503 responses.
+- A live API metric count matched its PostgreSQL source.
+- Documentation routes returned HTTP 200 when enabled and HTTP 404 when
+  disabled.
+- `api-db-init`, Docker Compose configuration, `git diff --check`, temporary
+  user cleanup, and orphaned-role-assignment checks passed.
+- Fresh Airflow run `task7_phase5_20260729T171422` succeeded through all six
+  deployed tasks. Its dbt results persisted 16 successful models and 109 passing
+  tests, followed by 12 health metrics, 118 schema snapshots, and 12 incidents.
+- PostgreSQL, API, Airflow scheduler, Airflow webserver, and Grafana were healthy
+  after the DAG run.
+
+### Final acceptance result
+
+- Acceptance criteria: **14/14 PASS**
+- Focused security/authentication/RBAC tests: **54 passed**
+- Full repository suite: **182 passed**
+- Fresh Airflow DAG: **PASS**
+- dbt run: **PASS**
+- dbt test: **PASS**
+- Protected endpoint validation: **PASS**
+- Anonymous access rejection: **PASS**
+- Role authorization: **PASS**
+- Environment-based secret configuration: **PASS**
+- Service health: **PASS**
+
+The local `.env` configuration was completed, the API restarted successfully,
+and the health endpoint was verified. A permanent Admin user was provisioned;
+real login, JWT issuance, and an authenticated API request succeeded.
+Anonymous requests correctly returned HTTP 401. No production-blocking defects
+were identified.
+
+Task #7 is complete and PASS.
