@@ -37,12 +37,26 @@ def settings_data(**overrides):
         "jwt_secret_key": TEST_SECRET,
         "jwt_issuer": "open-dataops-platform-api",
         "jwt_audience": "open-dataops-platform-clients",
+        "airflow_api_url": "http://airflow.test/api/v1",
+        "airflow_api_username": "test-user",
+        "airflow_api_password": "test-password",
+        "airflow_api_verify_tls": True,
     }
     values.update(overrides)
     return values
 
 
 class SettingsTests(unittest.TestCase):
+    def test_invalid_airflow_configuration_is_rejected(self):
+        for overrides in (
+            {"airflow_api_url": "ftp://airflow.test/api/v1"},
+            {"airflow_api_username": "  "},
+            {"airflow_api_password": "  "},
+        ):
+            with self.subTest(overrides=overrides):
+                with self.assertRaises(ValidationError):
+                    Settings(**settings_data(**overrides))
+
     def test_missing_jwt_secret_is_rejected(self):
         values = settings_data()
         del values["jwt_secret_key"]
@@ -83,6 +97,9 @@ class SettingsTests(unittest.TestCase):
             "API_JWT_SECRET_KEY": TEST_SECRET,
             "API_JWT_ISSUER": "issuer",
             "API_JWT_AUDIENCE": "audience",
+            "AIRFLOW_API_URL": "http://airflow.test/api/v1",
+            "AIRFLOW_API_USERNAME": "test-user",
+            "AIRFLOW_API_PASSWORD": "test-password",
         }
         for value, expected in (
             ("true", True),
@@ -108,6 +125,14 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {**base_environment, "API_DOCS_ENABLED": "sometimes"},
+            clear=True,
+        ):
+            with self.assertRaises(ValueError):
+                Settings.from_environment()
+
+        with patch.dict(
+            os.environ,
+            {**base_environment, "AIRFLOW_API_VERIFY_TLS": "sometimes"},
             clear=True,
         ):
             with self.assertRaises(ValueError):

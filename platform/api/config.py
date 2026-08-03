@@ -5,7 +5,15 @@ from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 JWT_ALGORITHM = "HS256"
@@ -49,6 +57,10 @@ class Settings(BaseModel):
     jwt_issuer: str
     jwt_audience: str
     api_docs_enabled: bool = False
+    airflow_api_url: AnyHttpUrl
+    airflow_api_username: str
+    airflow_api_password: SecretStr
+    airflow_api_verify_tls: bool
 
     @field_validator("jwt_secret_key")
     @classmethod
@@ -68,6 +80,21 @@ class Settings(BaseModel):
             raise ValueError("JWT issuer and audience must not be blank")
         return normalized
 
+    @field_validator("airflow_api_username")
+    @classmethod
+    def validate_airflow_api_username(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Airflow API username must not be blank")
+        return normalized
+
+    @field_validator("airflow_api_password")
+    @classmethod
+    def validate_airflow_api_password(cls, value: SecretStr) -> SecretStr:
+        if not value.get_secret_value().strip():
+            raise ValueError("Airflow API password must not be blank")
+        return value
+
     @model_validator(mode="after")
     def validate_pool_sizes(self) -> "Settings":
         if self.database_pool_min_size > self.database_pool_max_size:
@@ -83,6 +110,10 @@ class Settings(BaseModel):
         docs_enabled = parse_boolean_environment(
             os.getenv("API_DOCS_ENABLED", "false"),
             variable_name="API_DOCS_ENABLED",
+        )
+        airflow_verify_tls = parse_boolean_environment(
+            os.getenv("AIRFLOW_API_VERIFY_TLS", "true"),
+            variable_name="AIRFLOW_API_VERIFY_TLS",
         )
         return cls(
             service_name=os.getenv("API_SERVICE_NAME", cls.model_fields["service_name"].default),
@@ -107,6 +138,10 @@ class Settings(BaseModel):
             jwt_issuer=os.getenv("API_JWT_ISSUER"),
             jwt_audience=os.getenv("API_JWT_AUDIENCE"),
             api_docs_enabled=docs_enabled,
+            airflow_api_url=os.getenv("AIRFLOW_API_URL"),
+            airflow_api_username=os.getenv("AIRFLOW_API_USERNAME"),
+            airflow_api_password=os.getenv("AIRFLOW_API_PASSWORD"),
+            airflow_api_verify_tls=airflow_verify_tls,
         )
 
     def database_connection_kwargs(self) -> dict[str, str | int]:

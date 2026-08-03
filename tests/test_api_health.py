@@ -133,6 +133,10 @@ class ApiHealthTests(unittest.IsolatedAsyncioTestCase):
             ),
             "API_JWT_ISSUER": "test-issuer",
             "API_JWT_AUDIENCE": "test-audience",
+            "AIRFLOW_API_URL": "https://airflow.example/api/v1",
+            "AIRFLOW_API_USERNAME": "service-account",
+            "AIRFLOW_API_PASSWORD": "not-hard-coded-either",
+            "AIRFLOW_API_VERIFY_TLS": "true",
         }
         with patch.dict(os.environ, environment, clear=True):
             settings = Settings.from_environment()
@@ -142,6 +146,13 @@ class ApiHealthTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(settings.postgres_db, "warehouse")
         self.assertEqual(settings.postgres_user, "reader")
         self.assertEqual(settings.postgres_password, "not-hard-coded")
+        self.assertEqual(str(settings.airflow_api_url), "https://airflow.example/api/v1")
+        self.assertEqual(settings.airflow_api_username, "service-account")
+        self.assertEqual(
+            settings.airflow_api_password.get_secret_value(),
+            "not-hard-coded-either",
+        )
+        self.assertTrue(settings.airflow_api_verify_tls)
 
 
 if __name__ == "__main__":

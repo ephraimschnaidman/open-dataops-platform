@@ -64,6 +64,10 @@ def make_settings(**overrides):
         "jwt_issuer": "open-dataops-platform-api",
         "jwt_audience": "open-dataops-platform-clients",
         "api_docs_enabled": True,
+        "airflow_api_url": "http://airflow.test/api/v1",
+        "airflow_api_username": "test-user",
+        "airflow_api_password": "test-password",
+        "airflow_api_verify_tls": True,
     }
     values.update(overrides)
     return Settings(**values)

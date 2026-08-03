@@ -11,6 +11,7 @@ from api.auth_dependencies import require_roles
 from api.config import Settings, get_settings
 from api.database import create_database_pool
 from api.logging_config import configure_logging
+from api.orchestrators.airflow import AirflowClient, create_airflow_http_client
 from api.routes.auth import router as auth_router
 from api.routes.dbt_metadata import router as dbt_metadata_router
 from api.routes.health import router as health_router
@@ -35,12 +36,19 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application_settings: Settings = application.state.settings
     pool = create_database_pool(application_settings)
     application.state.database_pool = pool
+    airflow_http_client = create_airflow_http_client(application_settings)
+    orchestrator_client = AirflowClient(airflow_http_client)
+    application.state.airflow_http_client = airflow_http_client
+    application.state.orchestrator_client = orchestrator_client
     logger.info("Opening database connection pool", extra={"event": "database_pool_opening"})
     await pool.open(wait=False)
     logger.info("Database connection pool opened", extra={"event": "database_pool_opened"})
     try:
         yield
     finally:
+        logger.info("Closing orchestrator client", extra={"event": "orchestrator_client_closing"})
+        await orchestrator_client.aclose()
+        logger.info("Orchestrator client closed", extra={"event": "orchestrator_client_closed"})
         logger.info("Closing database connection pool", extra={"event": "database_pool_closing"})
         await pool.close()
         logger.info("Database connection pool closed", extra={"event": "database_pool_closed"})
