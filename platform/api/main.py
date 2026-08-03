@@ -17,6 +17,7 @@ from api.routes.dbt_metadata import router as dbt_metadata_router
 from api.routes.health import router as health_router
 from api.routes.incidents import router as incidents_router
 from api.routes.metrics import router as metrics_router
+from api.routes.operations import router as operations_router
 from api.routes.pipelines import router as pipelines_router
 from api.routes.schema_snapshots import router as schema_snapshots_router
 
@@ -87,6 +88,10 @@ def create_app(application_settings: Settings) -> FastAPI:
     )
     application.include_router(
         pipelines_router,
+        dependencies=operational_dependencies,
+    )
+    application.include_router(
+        operations_router,
         dependencies=operational_dependencies,
     )
 

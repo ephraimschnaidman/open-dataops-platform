@@ -18,6 +18,7 @@ class Pagination(OrchestratorModel):
 
 class Dag(OrchestratorModel):
     dag_id: str = Field(min_length=1)
+    display_name: str | None = None
     description: str | None = None
     is_active: bool
     is_paused: bool
@@ -33,12 +34,44 @@ class DagPage(OrchestratorModel):
 class DagRun(OrchestratorModel):
     dag_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
-    status: str = Field(min_length=1)
+    state: str = Field(min_length=1)
     logical_date: datetime | None = None
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    data_interval_start: datetime | None = None
+    data_interval_end: datetime | None = None
+    run_type: str | None = None
+    externally_triggered: bool | None = None
 
 
 class DagRunPage(OrchestratorModel):
     items: tuple[DagRun, ...]
     pagination: Pagination
+
+
+class TaskInstance(OrchestratorModel):
+    dag_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    task_id: str = Field(min_length=1)
+    state: str | None = None
+    try_number: int = Field(ge=0)
+    map_index: int = Field(ge=-1)
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    duration: float | None = Field(default=None, ge=0)
+    operator: str | None = None
+    queued_when: datetime | None = None
+
+
+class TaskInstancePage(OrchestratorModel):
+    items: tuple[TaskInstance, ...]
+    pagination: Pagination
+
+
+class TaskLog(OrchestratorModel):
+    dag_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    task_id: str = Field(min_length=1)
+    try_number: int = Field(ge=1)
+    map_index: int = Field(ge=-1)
+    content: str

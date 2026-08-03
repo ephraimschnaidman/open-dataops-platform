@@ -71,6 +71,26 @@ def run_payload(**overrides):
     return values
 
 
+def task_payload(**overrides):
+    values = {
+        "dag_id": "daily_sales",
+        "dag_run_id": "scheduled/run",
+        "task_id": "load/orders",
+        "state": "success",
+        "try_number": 1,
+        "map_index": -1,
+        "start_date": "2026-08-01T00:01:00Z",
+        "end_date": "2026-08-01T00:02:00Z",
+        "duration": 60.0,
+        "operator": "PythonOperator",
+        "queued_when": "2026-08-01T00:00:30Z",
+        "hostname": "internal-worker",
+        "executor_config": {"secret": True},
+    }
+    values.update(overrides)
+    return values
+
+
 class AirflowClientTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         client = getattr(self, "http_client", None)
@@ -136,7 +156,7 @@ class AirflowClientTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsInstance(result, DagRunPage)
         self.assertEqual(result.items[0].run_id, run_payload()["dag_run_id"])
-        self.assertEqual(result.items[0].status, "success")
+        self.assertEqual(result.items[0].state, "success")
         self.assertFalse(hasattr(result.items[0], "conf"))
 
     async def test_invalid_json_and_missing_fields_are_translated(self):
@@ -191,6 +211,63 @@ class AirflowClientTests(unittest.IsolatedAsyncioTestCase):
                     await client.list_dags(limit=10, offset=0)
                 self.assertEqual(calls, 1)
                 await self.http_client.aclose()
+
+    async def test_get_run_and_task_instances_encode_ids_and_map_neutrally(self):
+        seen = []
+
+        def handler(request):
+            seen.append(str(request.url))
+            if str(request.url).endswith("dagRuns/run%2Fone"):
+                return httpx.Response(200, json=run_payload(dag_run_id="run/one"))
+            return httpx.Response(
+                200, json={"task_instances": [task_payload()], "total_entries": 1}
+            )
+
+        client = self.build_client(handler)
+        run = await client.get_dag_run(dag_id="folder/dag", run_id="run/one")
+        tasks = await client.list_task_instances(
+            dag_id="folder/dag", run_id="scheduled/run", limit=10, offset=2
+        )
+        self.assertEqual(run.run_id, "run/one")
+        self.assertIn("folder%2Fdag", seen[0])
+        self.assertIn("scheduled%2Frun", seen[1])
+        self.assertEqual(tasks.pagination.returned_count, 1)
+        self.assertFalse(hasattr(tasks.items[0], "hostname"))
+        self.assertFalse(hasattr(tasks.items[0], "executor_config"))
+
+    async def test_task_log_encodes_all_ids_and_generates_validated_query(self):
+        seen = {}
+
+        def handler(request):
+            seen["request"] = request
+            return httpx.Response(200, text="safe log content")
+
+        result = await self.build_client(handler).get_task_log(
+            dag_id="folder/dag", run_id="run/id", task_id="task/id",
+            try_number=2, map_index=3,
+        )
+        request = seen["request"]
+        self.assertIn("folder%2Fdag", str(request.url))
+        self.assertIn("run%2Fid", str(request.url))
+        self.assertIn("task%2Fid/logs/2", str(request.url))
+        self.assertEqual(request.url.params["full_content"], "true")
+        self.assertEqual(request.url.params["map_index"], "3")
+        self.assertEqual(request.headers["Accept"], "text/plain")
+        self.assertEqual(result.content, "safe log content")
+
+    async def test_task_log_rejects_non_text_response_without_exposing_body(self):
+        client = self.build_client(
+            lambda _: httpx.Response(
+                200, json={"content": "internal log", "file_token": "secret"}
+            )
+        )
+        with self.assertRaises(OrchestratorInvalidResponseError) as raised:
+            await client.get_task_log(
+                dag_id="dag", run_id="run", task_id="task",
+                try_number=1, map_index=-1,
+            )
+        self.assertNotIn("internal log", str(raised.exception))
+        self.assertNotIn("secret", str(raised.exception))
 
     async def test_shutdown_closes_shared_http_client(self):
         client = self.build_client(
