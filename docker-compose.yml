@@ -11,7 +11,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://dataops:${POSTGRES_PASSWORD}@postgres:5432/airflow
     AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/runtime/logs/airflow
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:?Set AIRFLOW_SECRET_KEY in .env}
-    AIRFLOW__FAB__AUTH_BACKENDS: airflow.providers.fab.auth_manager.api.auth.backend.basic_auth
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
     POSTGRES_HOST: postgres
     POSTGRES_PORT: "5432"
     POSTGRES_DB: dataops
