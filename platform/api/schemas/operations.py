@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -47,6 +48,22 @@ class DagRunResponse(OperationResponse):
 class DagRunListResponse(OperationResponse):
     items: tuple[DagRunResponse, ...]
     pagination: PaginationResponse
+
+
+class TriggerDagRequest(OperationResponse):
+    run_id: str | None = Field(default=None, min_length=1, max_length=250)
+    logical_date: datetime | None = None
+    conf: dict[str, Any] | None = None
+
+
+class WorkflowOperationResponse(OperationResponse):
+    operation_id: str
+    dag_id: str
+    run_id: str
+    state: str
+    logical_date: datetime | None
+    start_date: datetime | None
+    externally_triggered: bool | None
 
 
 class TaskInstanceResponse(OperationResponse):

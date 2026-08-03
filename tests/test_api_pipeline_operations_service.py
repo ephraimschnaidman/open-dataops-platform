@@ -9,7 +9,7 @@ from api.orchestrators.models import (  # noqa: E402
     Dag,
     DagPage,
     DagRun, DagRunPage, TaskInstancePage, TaskLog,
-    Pagination,
+    Pagination, WorkflowOperation,
 )
 from api.services.pipeline_operations import PipelineOperationsService  # noqa: E402
 
@@ -19,6 +19,17 @@ class StubOrchestratorClient(OrchestratorClient):
         self.call = None
         self.dag = Dag(
             dag_id="daily_sales", is_active=True, is_paused=False
+        )
+
+    async def trigger_workflow(self, *, dag_id, request):
+        self.call = ("trigger_workflow", dag_id, request)
+        return WorkflowOperation(
+            operation_id=request.run_id,
+            dag_id=dag_id,
+            run_id=request.run_id,
+            state="queued",
+            logical_date=request.logical_date,
+            externally_triggered=True,
         )
 
     async def list_dags(self, *, limit, offset, paused=None, active=None, tag=None):
@@ -107,6 +118,37 @@ class PipelineOperationsServiceTests(unittest.IsolatedAsyncioTestCase):
             self.orchestrator.call,
             ("get_task_log", "dag", "run", "task", 2, -1),
         )
+
+    async def test_trigger_preserves_caller_run_id_and_neutral_request(self):
+        result = await self.service.trigger_workflow(
+            dag_id="daily_sales",
+            run_id="caller-run",
+            logical_date=None,
+            conf={"region": "us"},
+        )
+        operation, dag_id, request = self.orchestrator.call
+        self.assertEqual((operation, dag_id), ("trigger_workflow", "daily_sales"))
+        self.assertEqual(request.run_id, "caller-run")
+        self.assertEqual(request.conf, {"region": "us"})
+        self.assertEqual(result.operation_id, "caller-run")
+
+    async def test_trigger_generates_clear_platform_run_id(self):
+        await self.service.trigger_workflow(
+            dag_id="daily_sales", run_id=None, logical_date=None, conf=None
+        )
+        generated = self.orchestrator.call[2].run_id
+        self.assertRegex(
+            generated,
+            r"^platform__manual__\d{8}T\d{12}Z__[0-9a-f]{32}$",
+        )
+
+    async def test_retry_and_cancel_are_capability_driven_unsupported(self):
+        from api.orchestrators.base import OrchestratorOperationUnsupportedError
+
+        with self.assertRaises(OrchestratorOperationUnsupportedError):
+            await self.service.retry_run(dag_id="daily_sales", run_id="run")
+        with self.assertRaises(OrchestratorOperationUnsupportedError):
+            await self.service.cancel_run(dag_id="daily_sales", run_id="run")
 
 
 if __name__ == "__main__":

@@ -25,7 +25,9 @@ from api.orchestrators.base import (  # noqa: E402
     OrchestratorPermissionError,
     OrchestratorUnavailableError,
 )
-from api.orchestrators.models import Dag, DagPage, DagRunPage  # noqa: E402
+from api.orchestrators.models import (  # noqa: E402
+    Dag, DagPage, DagRunPage, TriggerWorkflowRequest, WorkflowOperation,
+)
 from api.main import lifespan  # noqa: E402
 
 
@@ -103,6 +105,105 @@ class AirflowClientTests(unittest.IsolatedAsyncioTestCase):
             transport=httpx.MockTransport(handler),
         )
         return AirflowClient(self.http_client)
+
+    async def test_trigger_posts_once_and_maps_neutral_operation(self):
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(
+                200,
+                json=run_payload(
+                    dag_run_id="caller/run",
+                    state="queued",
+                    external_trigger=True,
+                    hostname="private-worker",
+                ),
+            )
+
+        result = await self.build_client(handler).trigger_workflow(
+            dag_id="folder/dag",
+            request=TriggerWorkflowRequest(
+                run_id="caller/run",
+                logical_date="2026-08-01T00:00:00Z",
+                conf={"password": "do-not-log"},
+            ),
+        )
+        self.assertEqual(len(seen), 1)
+        request = seen[0]
+        self.assertEqual(request.method, "POST")
+        self.assertIn("folder%2Fdag/dagRuns", str(request.url))
+        self.assertEqual(
+            request.read().decode(),
+            '{"dag_run_id":"caller/run","logical_date":"2026-08-01T00:00:00+00:00","conf":{"password":"do-not-log"}}',
+        )
+        self.assertIsInstance(result, WorkflowOperation)
+        self.assertEqual(result.operation_id, "caller/run")
+        self.assertEqual(result.run_id, "caller/run")
+        self.assertTrue(result.externally_triggered)
+        self.assertFalse(hasattr(result, "conf"))
+        self.assertFalse(hasattr(result, "hostname"))
+
+    async def test_trigger_conf_and_unsafe_run_id_do_not_appear_in_logs(self):
+        client = self.build_client(
+            lambda _: httpx.Response(
+                200,
+                json=run_payload(
+                    dag_run_id="run/with newline\n", state="queued"
+                ),
+            )
+        )
+        with self.assertLogs("api.orchestrators.airflow", level=logging.INFO) as captured:
+            await client.trigger_workflow(
+                dag_id="daily_sales",
+                request=TriggerWorkflowRequest(
+                    run_id="run/with newline\n", conf={"token": "super-secret-value"}
+                ),
+            )
+        output = " ".join(captured.output)
+        self.assertNotIn("super-secret-value", output)
+        self.assertNotIn("\n", output)
+
+    async def test_trigger_failures_are_safe_and_never_retried(self):
+        cases = (
+            (404, OrchestratorNotFoundError),
+            (409, OrchestratorConflictError),
+            (503, OrchestratorUnavailableError),
+        )
+        for status_code, expected in cases:
+            calls = 0
+
+            def handler(_, code=status_code):
+                nonlocal calls
+                calls += 1
+                return httpx.Response(code, json={"detail": "upstream-secret"})
+
+            with self.subTest(status_code=status_code):
+                client = self.build_client(handler)
+                with self.assertRaises(expected) as raised:
+                    await client.trigger_workflow(
+                        dag_id="daily_sales",
+                        request=TriggerWorkflowRequest(run_id="caller-run"),
+                    )
+                self.assertEqual(calls, 1)
+                self.assertNotIn("upstream-secret", str(raised.exception))
+                await self.http_client.aclose()
+
+    async def test_trigger_timeout_is_safe_and_not_retried(self):
+        calls = 0
+
+        def handler(_):
+            nonlocal calls
+            calls += 1
+            raise httpx.ReadTimeout("slow")
+
+        client = self.build_client(handler)
+        with self.assertRaises(OrchestratorUnavailableError):
+            await client.trigger_workflow(
+                dag_id="daily_sales",
+                request=TriggerWorkflowRequest(run_id="caller-run"),
+            )
+        self.assertEqual(calls, 1)
 
     async def test_list_dags_generates_url_auth_and_neutral_pagination(self):
         seen = {}

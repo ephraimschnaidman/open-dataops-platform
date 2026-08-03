@@ -12,12 +12,13 @@ from api.auth_dependencies import get_current_active_user  # noqa: E402
 from api.dependencies import get_pipeline_operations_service  # noqa: E402
 from api.main import app  # noqa: E402
 from api.orchestrators.base import (  # noqa: E402
-    OrchestratorInvalidResponseError, OrchestratorNotFoundError,
+    OrchestratorConflictError, OrchestratorInvalidResponseError,
+    OrchestratorNotFoundError, OrchestratorOperationUnsupportedError,
     OrchestratorUnavailableError,
 )
 from api.orchestrators.models import (  # noqa: E402
     Dag, DagPage, DagRun, DagRunPage, Pagination, TaskInstance,
-    TaskInstancePage, TaskLog,
+    TaskInstancePage, TaskLog, WorkflowOperation,
 )
 from api.schemas.auth import CurrentUser  # noqa: E402
 
@@ -50,6 +51,27 @@ class StubService:
             dag_id="ecommerce_pipeline", run_id="scheduled/run", task_id="load",
             state="success", try_number=1, map_index=-1,
         )
+        self.write_calls = 0
+
+    async def trigger_workflow(self, **kwargs):
+        self.write_calls += 1
+        run_id = kwargs["run_id"] or "platform__manual__generated"
+        return self._result(WorkflowOperation(
+            operation_id=run_id,
+            dag_id=kwargs["dag_id"],
+            run_id=run_id,
+            state="queued",
+            logical_date=kwargs["logical_date"],
+            externally_triggered=True,
+        ), kwargs)
+
+    async def retry_run(self, **kwargs):
+        self.write_calls += 1
+        return self._result(None, kwargs)
+
+    async def cancel_run(self, **kwargs):
+        self.write_calls += 1
+        return self._result(None, kwargs)
 
     def _result(self, result, arguments):
         self.arguments = arguments
@@ -172,6 +194,87 @@ class OperationsRouteTests(unittest.TestCase):
         operation = schema["paths"]["/api/v1/operations/dags"]["get"]
         self.assertEqual(operation["security"], [{"OAuth2PasswordBearer": []}])
         self.assertNotIn("/api/v1/operations/runs/{run_id}", schema["paths"])
+
+    def test_admin_and_operator_can_trigger_with_safe_neutral_contract(self):
+        for role in ("Admin", "Operator"):
+            with self.subTest(role=role):
+                app.dependency_overrides[get_current_active_user] = lambda role=role: user(role)
+                response = self.client.post(
+                    "/api/v1/operations/dags/ecommerce_pipeline/trigger",
+                    json={
+                        "run_id": "caller-run",
+                        "logical_date": "2026-08-01T00:00:00Z",
+                        "conf": {"region": "us"},
+                    },
+                )
+                self.assertEqual(response.status_code, 201, response.text)
+                self.assertEqual(response.json()["operation_id"], "caller-run")
+                self.assertEqual(self.service.arguments["conf"], {"region": "us"})
+                self.assertNotIn("conf", response.json())
+
+    def test_write_rbac_blocks_before_service_execution(self):
+        paths = (
+            "/api/v1/operations/dags/d/trigger",
+            "/api/v1/operations/dags/d/runs/r/retry",
+            "/api/v1/operations/dags/d/runs/r/cancel",
+        )
+        for path in paths:
+            with self.subTest(path=path, role="ReadOnly"):
+                response = self.client.post(path, json={} if path.endswith("trigger") else None)
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response.json(), {"detail": "Insufficient permissions"})
+            with self.subTest(path=path, role="anonymous"):
+                app.dependency_overrides.pop(get_current_active_user, None)
+                response = self.client.post(path, json={} if path.endswith("trigger") else None)
+                self.assertEqual(response.status_code, 401)
+            app.dependency_overrides[get_current_active_user] = lambda: user("ReadOnly")
+        self.assertEqual(self.service.write_calls, 0)
+
+    def test_trigger_validation_and_safe_error_mappings(self):
+        app.dependency_overrides[get_current_active_user] = lambda: user("Operator")
+        invalid = self.client.post(
+            "/api/v1/operations/dags/d/trigger", json={"run_id": ""}
+        )
+        self.assertEqual(invalid.status_code, 422)
+        cases = (
+            (OrchestratorNotFoundError("secret"), 404, "Pipeline resource not found"),
+            (OrchestratorConflictError("secret"), 409, "Pipeline operation conflict"),
+            (OrchestratorUnavailableError("secret"), 503, "Pipeline service unavailable"),
+        )
+        for error, code, detail in cases:
+            with self.subTest(code=code):
+                self.service.error = error
+                response = self.client.post(
+                    "/api/v1/operations/dags/d/trigger", json={}
+                )
+                self.assertEqual(response.status_code, code)
+                self.assertEqual(response.json(), {"detail": detail})
+
+    def test_retry_and_cancel_return_501_for_authorized_writers(self):
+        self.service.error = OrchestratorOperationUnsupportedError("not safe")
+        for role in ("Admin", "Operator"):
+            app.dependency_overrides[get_current_active_user] = lambda role=role: user(role)
+            for operation in ("retry", "cancel"):
+                response = self.client.post(
+                    f"/api/v1/operations/dags/d/runs/r/{operation}"
+                )
+                self.assertEqual(response.status_code, 501)
+                self.assertEqual(
+                    response.json(), {"detail": "Pipeline operation not supported"}
+                )
+
+    def test_write_openapi_security_request_and_response_schemas(self):
+        schema = app.openapi()
+        trigger = schema["paths"]["/api/v1/operations/dags/{dag_id}/trigger"]["post"]
+        self.assertEqual(trigger["security"], [{"OAuth2PasswordBearer": []}])
+        request_ref = trigger["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+        request_schema = schema["components"]["schemas"][request_ref.rsplit("/", 1)[-1]]
+        self.assertEqual(
+            set(request_schema["properties"]), {"run_id", "logical_date", "conf"}
+        )
+        response_ref = trigger["responses"]["201"]["content"]["application/json"]["schema"]["$ref"]
+        response_schema = schema["components"]["schemas"][response_ref.rsplit("/", 1)[-1]]
+        self.assertIn("operation_id", response_schema["properties"])
 
 
 if __name__ == "__main__":

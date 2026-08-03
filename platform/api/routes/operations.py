@@ -5,6 +5,7 @@ from typing import Annotated, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from api.auth_dependencies import require_roles
 from api.dependencies import get_pipeline_operations_service
 from api.orchestrators.base import (
     OrchestratorAuthenticationError, OrchestratorConflictError,
@@ -15,6 +16,7 @@ from api.orchestrators.base import (
 from api.schemas.operations import (
     DagListResponse, DagResponse, DagRunListResponse, DagRunResponse,
     OperationsErrorResponse, TaskInstanceListResponse, TaskLogResponse,
+    TriggerDagRequest, WorkflowOperationResponse,
 )
 from api.services.pipeline_operations import PipelineOperationsService
 
@@ -22,6 +24,8 @@ router = APIRouter(prefix="/api/v1/operations", tags=["operations"])
 Service = Annotated[PipelineOperationsService, Depends(get_pipeline_operations_service)]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Offset = Annotated[int, Query(ge=0)]
+require_write_access = require_roles("Admin", "Operator")
+WRITE_DEPENDENCIES = [Depends(require_write_access)]
 
 ERROR_RESPONSES = {
     404: {"model": OperationsErrorResponse},
@@ -44,6 +48,57 @@ def _raise_safe(error: Exception) -> NoReturn:
     )):
         raise HTTPException(503, "Pipeline service unavailable") from error
     raise error
+
+
+@router.post(
+    "/dags/{dag_id}/trigger",
+    response_model=WorkflowOperationResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses=ERROR_RESPONSES,
+    dependencies=WRITE_DEPENDENCIES,
+)
+async def trigger_dag(
+    dag_id: str, request: TriggerDagRequest, service: Service
+) -> WorkflowOperationResponse:
+    try:
+        return await service.trigger_workflow(
+            dag_id=dag_id,
+            run_id=request.run_id,
+            logical_date=request.logical_date,
+            conf=request.conf,
+        )
+    except Exception as error:
+        _raise_safe(error)
+
+
+@router.post(
+    "/dags/{dag_id}/runs/{run_id}/retry",
+    response_model=WorkflowOperationResponse,
+    responses=ERROR_RESPONSES,
+    dependencies=WRITE_DEPENDENCIES,
+)
+async def retry_dag_run(
+    dag_id: str, run_id: str, service: Service
+) -> WorkflowOperationResponse:
+    try:
+        return await service.retry_run(dag_id=dag_id, run_id=run_id)
+    except Exception as error:
+        _raise_safe(error)
+
+
+@router.post(
+    "/dags/{dag_id}/runs/{run_id}/cancel",
+    response_model=WorkflowOperationResponse,
+    responses=ERROR_RESPONSES,
+    dependencies=WRITE_DEPENDENCIES,
+)
+async def cancel_dag_run(
+    dag_id: str, run_id: str, service: Service
+) -> WorkflowOperationResponse:
+    try:
+        return await service.cancel_run(dag_id=dag_id, run_id=run_id)
+    except Exception as error:
+        _raise_safe(error)
 
 
 @router.get("/dags", response_model=DagListResponse, responses=ERROR_RESPONSES)

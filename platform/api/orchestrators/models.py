@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -41,6 +42,22 @@ class DagRun(OrchestratorModel):
     data_interval_start: datetime | None = None
     data_interval_end: datetime | None = None
     run_type: str | None = None
+    externally_triggered: bool | None = None
+
+
+class TriggerWorkflowRequest(OrchestratorModel):
+    run_id: str = Field(min_length=1, max_length=250)
+    logical_date: datetime | None = None
+    conf: dict[str, Any] | None = None
+
+
+class WorkflowOperation(OrchestratorModel):
+    operation_id: str = Field(min_length=1)
+    dag_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    state: str = Field(min_length=1)
+    logical_date: datetime | None = None
+    start_date: datetime | None = None
     externally_triggered: bool | None = None
 
 

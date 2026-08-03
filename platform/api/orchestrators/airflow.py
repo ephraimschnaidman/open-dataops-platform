@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Mapping
+from time import perf_counter
 from typing import Any
 from urllib.parse import quote
 
@@ -21,7 +23,7 @@ from .base import (
 )
 from .models import (
     Dag, DagPage, DagRun, DagRunPage, Pagination, TaskInstance,
-    TaskInstancePage, TaskLog,
+    TaskInstancePage, TaskLog, TriggerWorkflowRequest, WorkflowOperation,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,35 @@ class AirflowClient(OrchestratorClient):
 
     async def aclose(self) -> None:
         await self._http_client.aclose()
+
+    async def trigger_workflow(
+        self, *, dag_id: str, request: TriggerWorkflowRequest
+    ) -> WorkflowOperation:
+        payload: dict[str, Any] = {"dag_run_id": request.run_id}
+        if request.logical_date is not None:
+            payload["logical_date"] = request.logical_date.isoformat()
+        if request.conf is not None:
+            payload["conf"] = request.conf
+
+        started = perf_counter()
+        response_payload = await self._post_json(
+            f"dags/{quote(dag_id, safe='')}/dagRuns",
+            json=payload,
+            operation="trigger_workflow",
+        )
+        operation = self._map_workflow_operation(response_payload)
+        logger.info(
+            "Orchestrator operation completed",
+            extra={
+                "event": "orchestrator_operation_completed",
+                "operation": "trigger_workflow",
+                "dag_id": dag_id,
+                "run_id": self._sanitize_log_identifier(request.run_id),
+                "duration": round(perf_counter() - started, 6),
+                "outcome": "accepted",
+            },
+        )
+        return operation
 
     async def list_dags(
         self, *, limit: int, offset: int, paused: bool | None = None,
@@ -213,6 +244,35 @@ class AirflowClient(OrchestratorClient):
             )
         return payload
 
+    async def _post_json(
+        self,
+        path: str,
+        *,
+        json: Mapping[str, Any],
+        operation: str,
+    ) -> Mapping[str, Any]:
+        try:
+            response = await self._http_client.post(path, json=json)
+        except (httpx.TimeoutException, httpx.NetworkError) as error:
+            logger.warning(
+                "Orchestrator request unavailable",
+                extra={"event": "orchestrator_unavailable", "operation": operation},
+            )
+            raise OrchestratorUnavailableError("Orchestrator unavailable") from error
+
+        self._raise_for_status(response, operation=operation)
+        try:
+            payload = response.json()
+        except ValueError as error:
+            raise OrchestratorInvalidResponseError(
+                "Orchestrator returned an invalid response"
+            ) from error
+        if not isinstance(payload, Mapping):
+            raise OrchestratorInvalidResponseError(
+                "Orchestrator returned an invalid response"
+            )
+        return payload
+
     @staticmethod
     def _raise_for_status(response: httpx.Response, *, operation: str) -> None:
         exception_type = {
@@ -281,6 +341,30 @@ class AirflowClient(OrchestratorClient):
             raise OrchestratorInvalidResponseError(
                 "Orchestrator returned an invalid DAG run response"
             ) from error
+
+    @classmethod
+    def _map_workflow_operation(
+        cls, payload: Mapping[str, Any]
+    ) -> WorkflowOperation:
+        try:
+            run_id = cls._required_string(payload, "dag_run_id")
+            return WorkflowOperation(
+                operation_id=run_id,
+                dag_id=cls._required_string(payload, "dag_id"),
+                run_id=run_id,
+                state=cls._required_string(payload, "state"),
+                logical_date=payload.get("logical_date"),
+                start_date=payload.get("start_date"),
+                externally_triggered=cls._optional_bool(payload, "external_trigger"),
+            )
+        except (KeyError, TypeError, ValidationError) as error:
+            raise OrchestratorInvalidResponseError(
+                "Orchestrator returned an invalid operation response"
+            ) from error
+
+    @staticmethod
+    def _sanitize_log_identifier(value: str) -> str:
+        return re.sub(r"[^A-Za-z0-9_.:@+-]", "_", value)[:128]
 
     @classmethod
     def _map_task_instance(cls, payload: Mapping[str, Any]) -> TaskInstance:

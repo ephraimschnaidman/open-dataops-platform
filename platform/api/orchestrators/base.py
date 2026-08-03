@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from .models import Dag, DagPage, DagRun, DagRunPage, TaskInstancePage, TaskLog
+from .models import (
+    Dag, DagPage, DagRun, DagRunPage, TaskInstancePage, TaskLog,
+    TriggerWorkflowRequest, WorkflowOperation,
+)
 
 
 class OrchestratorError(Exception):
@@ -38,6 +41,12 @@ class OrchestratorOperationUnsupportedError(OrchestratorError):
 
 
 class OrchestratorClient(ABC):
+    @abstractmethod
+    async def trigger_workflow(
+        self, *, dag_id: str, request: TriggerWorkflowRequest
+    ) -> WorkflowOperation:
+        raise NotImplementedError
+
     @abstractmethod
     async def list_dags(
         self, *, limit: int, offset: int, paused: bool | None = None,
