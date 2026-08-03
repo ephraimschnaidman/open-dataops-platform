@@ -143,3 +143,126 @@ Anonymous requests correctly returned HTTP 401. No production-blocking defects
 were identified.
 
 Task #7 is complete and PASS.
+
+## Task #8 – Platform Operations API
+
+**Status: PASS**
+
+### Validated architecture and scope
+
+Task #8 preserves the layered operations architecture:
+
+```text
+FastAPI operations router
+  -> PipelineOperationsService
+  -> OrchestratorClient
+  -> AirflowClient
+  -> Airflow 2.10.5 stable REST API
+```
+
+The deployed API provides six platform-neutral live read operations and one
+safe trigger operation. `Admin`, `Operator`, and `ReadOnly` have read access;
+only `Admin` and `Operator` have write access. Trigger requests preserve a
+supplied run ID or generate a platform-owned run ID, never automatically retry
+the POST, and map duplicate IDs to HTTP 409 without exposing raw Airflow data.
+
+Retry and cancel endpoints intentionally return HTTP 501. Airflow 2.10.5 does
+not expose stable operations that guarantee safe whole-run retry or
+cancellation of already-running work. This capability boundary is a documented
+limitation and is not a defect.
+
+### Final production-style validation
+
+Validation was performed on August 3, 2026 against the rebuilt API and the
+deployed Docker Compose stack.
+
+- Compile/import checks passed.
+- OpenAPI generation passed with 17 paths and bearer security on protected
+  operations.
+- `docker compose config --quiet` and `git diff --check` passed.
+- All 36 focused Task #8 tests passed.
+- The full repository suite completed 219 tests: 215 passed and 4 were
+  intentionally skipped.
+- `GET /health`, `GET /docs`, and `GET /openapi.json` returned HTTP 200.
+- Real Admin, Operator, and ReadOnly users authenticated and received valid JWTs.
+- All six live operations read endpoints returned HTTP 200 with a real JWT,
+  including validated task-log coordinates.
+- Operator trigger returned HTTP 201; Admin reached write service behavior and
+  received the expected HTTP 409 duplicate and HTTP 404 invalid-DAG responses.
+- Anonymous trigger returned HTTP 401 and ReadOnly trigger returned HTTP 403.
+- Retry and cancel returned the intentional HTTP 501 response.
+- Incidents, metrics, schema snapshots, dbt metadata, and pipelines endpoints
+  all returned HTTP 200 with a real JWT.
+- Trigger configuration was absent from API logs.
+- PostgreSQL, API, Airflow scheduler, Airflow webserver, and Grafana were healthy.
+
+Fresh Airflow run `task8_acceptance_20260803153203` completed successfully:
+
+```text
+bootstrap_raw_data: success
+run_dbt: success
+test_dbt: success
+collect_dbt_metadata: success
+collect_data_health_metrics: success
+detect_data_incidents: success
+```
+
+The exact run persisted 16 successful dbt model results, 109 passing dbt test
+results, 12 table-health metrics, 118 schema snapshots, and 12 incidents. Three
+temporary validation users were deleted; zero validation users and zero
+orphaned role assignments remained.
+
+### Acceptance matrix
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Airflow operations architecture | PASS | Router → service → neutral orchestrator → Airflow client confirmed in code, tests, and documentation |
+| Orchestrator abstraction | PASS | `OrchestratorClient` exposes neutral models; raw Airflow payloads remain inside `AirflowClient` |
+| Compile and imports | PASS | `compileall` and imports of app/client/service completed successfully |
+| OpenAPI generation | PASS | 17 paths generated; all operations routes and bearer security present |
+| Git whitespace validation | PASS | `git diff --check` returned clean |
+| Compose configuration | PASS | `docker compose config --quiet` exited successfully |
+| Focused Task #8 tests | PASS | 36/36 passed |
+| Full repository tests | PASS | 219 total: 215 passed and 4 intentionally skipped |
+| Required service health | PASS | PostgreSQL, API, scheduler, webserver, and Grafana all reported healthy |
+| Public endpoint availability | PASS | `/health`, `/docs`, and `/openapi.json` each returned 200 |
+| DAG list and detail reads | PASS | Both endpoints returned 200 with a real ReadOnly JWT |
+| Run list and detail reads | PASS | Both endpoints returned 200 with a real ReadOnly JWT |
+| Task-instance and task-log reads | PASS | Both endpoints returned 200 with validated run/task/try/map coordinates |
+| Operator trigger | PASS | Real Operator JWT created `task8_acceptance_20260803153203`; HTTP 201 |
+| Admin write authorization | PASS | Real Admin JWT passed write RBAC and received downstream 409/404 operation responses |
+| Trigger idempotency | PASS | Reusing the run ID returned safe HTTP 409 |
+| Invalid DAG handling | PASS | Triggering a nonexistent DAG returned safe HTTP 404 |
+| Anonymous write rejection | PASS | Trigger returned HTTP 401 |
+| ReadOnly write rejection | PASS | Trigger returned HTTP 403 `Insufficient permissions` |
+| Retry capability decision | PASS | Authorized request returned intentional safe HTTP 501 |
+| Cancel capability decision | PASS | Authorized request returned intentional safe HTTP 501 |
+| PostgreSQL API regression | PASS | Incidents, metrics, snapshots, dbt metadata, and pipelines returned 200 |
+| Task #7 authentication/JWT/RBAC regression | PASS | Three real roles authenticated; protected routes accepted JWTs and rejected anonymous access |
+| Airflow run and tasks | PASS | Fresh run and all six task instances completed successfully |
+| dbt regression | PASS | `run_dbt` and `test_dbt` succeeded; 16 model successes and 109 test passes persisted |
+| Metadata regression | PASS | 12 health metrics, 118 schema snapshots, and 12 incidents persisted for the exact run |
+| Sensitive trigger configuration | PASS | Conf marker absent from API logs and trigger response |
+| Validation cleanup | PASS | Temporary users removed; zero orphaned role assignments |
+
+### Warnings and known limitations
+
+- The test environment emits an existing Starlette `TestClient` deprecation
+  warning about the installed `httpx` compatibility layer. It does not affect
+  test results or deployed behavior.
+- The sandboxed Compose configuration check warns that the user-level Docker
+  configuration file is inaccessible, but the command succeeds and the
+  approved Docker daemon validation completes normally.
+- Retry and cancel remain intentionally unsupported with HTTP 501 because
+  Airflow 2.10.5 has no safe whole-run stable REST semantics for them.
+- A paused DAG accepts a trigger but remains queued until Airflow unpauses it.
+- PostgreSQL pipeline history still depends on reaching metadata collection;
+  live Airflow reads provide the current orchestrator view independently.
+
+### Final acceptance result
+
+- Acceptance criteria: **28/28 PASS**
+- Blocking defects: **none**
+- Recommendation: **TASK #8 PASS**
+
+Task #8 is complete and PASS.

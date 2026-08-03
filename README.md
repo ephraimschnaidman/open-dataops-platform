@@ -6,8 +6,9 @@ The project separates reusable platform capabilities from example business domai
 
 ## Platform Status: VALIDATED
 
-Tasks #1 through #7 are complete and have passed validation. Task #7 completed
-the authentication and authorization foundation.
+Tasks #1 through #8 are complete and have passed validation. Task #8 added the
+authenticated Platform Operations API for live Airflow reads and safe DAG
+triggering.
 
 The platform currently includes:
 
@@ -29,6 +30,9 @@ The platform currently includes:
 - Short-lived JWT access tokens and role-based access control (RBAC)
 - Protected operational endpoints with public health and authentication routes
 - Configurable OpenAPI documentation and secure user provisioning CLI
+- A platform-neutral orchestrator abstraction and Airflow 2.10.5 REST client
+- Live DAG, DAG-run, task-instance, and task-log operations
+- Admin/Operator DAG triggering with caller-supplied or platform-generated run IDs
 
 Task #6 added and validated the standalone operational API without changing
 Airflow, dbt, platform-job, or warehouse behavior. See the
@@ -40,7 +44,7 @@ deferred enhancements.
 
 ```text
 platform/
-  api/              Read-only FastAPI service for operational metadata
+  api/              FastAPI service for metadata and pipeline operations
   airflow/          Airflow image, dependencies, and orchestration DAGs
   dbt/              dbt Core project for warehouse transformations
   jobs/             Reusable, orchestrator-independent job entrypoints
@@ -113,10 +117,12 @@ docker compose exec postgres psql -U dataops -d dataops -c "SELECT current_datab
 
 ## Operational API
 
-The Docker Compose stack includes a read-only FastAPI REST API at
-[http://localhost:8000](http://localhost:8000). It serves JSON from operational
-metadata already persisted in PostgreSQL; it does not execute pipelines, run
-dbt, recalculate health metrics, detect schema drift, or mutate incidents.
+The Docker Compose stack includes a FastAPI REST API at
+[http://localhost:8000](http://localhost:8000). PostgreSQL-backed endpoints
+serve persisted operational metadata without mutation. The separate Platform
+Operations API reads live Airflow state and can safely trigger existing DAGs
+through Airflow's stable REST API; it does not create or edit DAGs, invoke dbt
+directly, recalculate health metrics, detect schema drift, or mutate incidents.
 
 Available resources cover:
 
@@ -126,13 +132,23 @@ Available resources cover:
 - schema snapshots;
 - dbt execution metadata; and
 - recorded pipeline history.
+- live Airflow DAGs, runs, task instances, and task logs; and
+- safe triggering of existing Airflow DAGs.
 
 `GET /health` and the OAuth2 Password authentication endpoint
 `POST /api/v1/auth/token` are public. The incidents, metrics,
 schema snapshots, dbt metadata, and pipeline-history endpoints require an
 active API user assigned at least one of `Admin`, `Operator`, or `ReadOnly`.
-All three roles currently have read access; reusable RBAC dependencies support
-future differentiated permissions.
+All three roles have read access. Only `Admin` and `Operator` can call write
+operations; `ReadOnly` receives HTTP 403 and anonymous callers receive HTTP 401.
+
+The trigger endpoint accepts optional `run_id`, `logical_date`, and JSON-object
+`conf`. Caller-supplied run IDs are preserved for idempotency; otherwise the
+service generates a `platform__manual__...` run ID. Duplicate IDs return HTTP
+409. Configuration payloads may contain secrets and are not logged or returned.
+Retry and cancel routes intentionally return HTTP 501 because Airflow 2.10.5
+does not provide safe whole-run retry or cancellation semantics through its
+stable REST API.
 
 Interactive OpenAPI documentation is available at
 [http://localhost:8000/docs](http://localhost:8000/docs) only when
@@ -144,9 +160,11 @@ limitation.
 ### API authentication
 
 The API reads `API_JWT_SECRET_KEY`, `API_JWT_ACCESS_TOKEN_EXPIRE_MINUTES`,
-`API_JWT_ISSUER`, `API_JWT_AUDIENCE`, and `API_DOCS_ENABLED`. The signing secret
-is required, must be a non-placeholder value of at least 32 characters, and
-must remain private. Access tokens default to a 30-minute lifetime.
+`API_JWT_ISSUER`, `API_JWT_AUDIENCE`, `API_DOCS_ENABLED`,
+`AIRFLOW_API_URL`, `AIRFLOW_API_USERNAME`, `AIRFLOW_API_PASSWORD`, and
+`AIRFLOW_API_VERIFY_TLS`. Signing and Airflow credentials must remain private.
+The JWT signing secret must be a non-placeholder value of at least 32
+characters. Access tokens default to a 30-minute lifetime.
 
 There is no default API user or public registration endpoint. Provision a user
 with one or more existing roles; the password is prompted twice and is never a
@@ -504,6 +522,7 @@ docker compose up -d
 Airflow and the jobs share no business implementation. This keeps the job entrypoints usable from the command line, CI, and future orchestration systems.
 
 Airflow, dbt, and platform jobs write operational metadata to PostgreSQL. The
-read-only FastAPI service consumes that persisted metadata for JSON clients.
+FastAPI service consumes that persisted metadata for JSON clients and uses a
+separate orchestrator client for live Airflow reads and safe triggering.
 Detailed API architecture is documented in
 [Platform API Architecture](docs/architecture/platform_api.md).

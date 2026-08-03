@@ -2,7 +2,7 @@
 
 ## Core Pipeline Platform Status: VALIDATED
 
-The platform validation phase is complete. Tasks #1 through #7 are complete
+The platform validation phase is complete. Tasks #1 through #8 are complete
 and have passed their acceptance and validation work.
 
 | Task | Completion | Validation |
@@ -14,6 +14,7 @@ and have passed their acceptance and validation work.
 | Task #5 – Failure and Resiliency Validation | Complete | PASS |
 | Task #6 – Platform API Foundation | Complete | PASS |
 | Task #7 – Authentication & Authorization Foundation | Complete | PASS |
+| Task #8 – Platform Operations API | Complete | PASS |
 
 ## Current Platform Scope
 
@@ -32,11 +33,14 @@ The platform currently includes:
 - Idempotent incident and metadata processing
 - Controlled failure recovery
 - End-to-end dependency validation
-- Standalone read-only FastAPI service
+- Standalone FastAPI service for persisted metadata and live pipeline operations
 - Operational metadata endpoints for incidents, health metrics, schema
   snapshots, dbt results, and recorded pipeline runs
 - Argon2 password authentication and short-lived JWT access tokens
 - PostgreSQL-backed API users, active state, roles, and router-level RBAC
+- Platform-neutral `OrchestratorClient` abstraction with an Airflow 2.10.5 client
+- Protected live DAG, run, task-instance, and task-log reads
+- Admin/Operator triggering of existing DAGs with explicit idempotency behavior
 
 ## Release Assessment
 
@@ -56,8 +60,8 @@ behavior.
 The API now authenticates provisioned users and protects operational endpoints.
 It does not include public registration, password reset, refresh tokens, OAuth
 providers, SSO, MFA, email verification, billing, multi-tenancy, a frontend,
-cloud deployment, pipeline execution, incident mutation, or major database
-redesign.
+cloud deployment, DAG creation/editing, arbitrary pipeline mutation, incident
+mutation, or major database redesign.
 
 `metadata.pipeline_runs` contains runs persisted by the metadata collection
 stage. Airflow DAG runs that fail before that stage may be absent; complete
@@ -79,3 +83,26 @@ endpoints. Secure provisioning, authentication documentation, and final
 validation are complete. All 14 acceptance criteria passed, along with 54
 focused security/authentication/RBAC tests, the 182-test repository suite, and
 a fresh deployed Airflow/dbt regression.
+
+## Task #8 – Platform Operations API
+
+**Status: COMPLETE / PASS**
+
+Task #8 adds a layered operations path from thin FastAPI routes through
+`PipelineOperationsService` and the platform-neutral `OrchestratorClient` to an
+Airflow 2.10.5 stable REST API implementation. Authenticated readers can list
+and inspect DAGs, runs, task instances, and task logs. `Admin` and `Operator`
+can trigger an existing DAG; `ReadOnly` remains read-only.
+
+Caller-supplied run IDs are preserved and duplicates return HTTP 409. When no
+run ID is supplied, the platform generates a clearly owned identifier. Retry
+and cancel endpoints intentionally return HTTP 501 because the deployed
+Airflow stable API does not guarantee safe whole-run retry or cancellation
+semantics. These capability decisions are limitations, not defects.
+
+Final acceptance passed all 28 documented criteria, all 36 focused Task #8
+tests, and the 219-test repository suite (215 passed, 4 intentionally skipped).
+Fresh run
+`task8_acceptance_20260803153203` completed all six tasks and persisted 16
+successful dbt models, 109 passing dbt tests, 12 health metrics, 118 schema
+snapshots, and 12 incidents. No blocking defects were identified.

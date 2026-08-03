@@ -1,7 +1,7 @@
 # Roadmap
 
 The core pipeline validation phase (Tasks #1 through #5) is complete and has
-passed. Tasks #6 and #7 are also complete and have passed final acceptance.
+passed. Tasks #6, #7, and #8 are also complete and have passed final acceptance.
 Items under Future Enhancements are planned work and are not represented as
 current platform capabilities.
 
@@ -50,7 +50,7 @@ block the current validated release:
 - Multi-factor authentication (MFA)
 - Password reset and public registration
 - User-administration workflows
-- A differentiated permissions model
+- More granular permissions beyond the current read/write role split
 - Multi-tenancy
 
 Additional production capabilities such as deployment automation and CI/CD remain
@@ -75,3 +75,25 @@ were verified. No production-blocking defects were identified.
 
 Future authentication capabilities are listed under Future Enhancements and
 remain outside Task #7.
+
+## Completed: Task #8 – Platform Operations API
+
+**Status: COMPLETE / PASS**
+
+Task #8 adds a platform-neutral orchestrator boundary, an Airflow 2.10.5 stable
+REST client, six live read endpoints, and safe triggering of existing DAGs.
+`Admin`, `Operator`, and `ReadOnly` can read operations data; only `Admin` and
+`Operator` can trigger. Caller run IDs are preserved, omitted IDs are generated
+by the platform, and duplicate triggers return HTTP 409.
+
+Retry and cancel routes are capability-driven and intentionally return HTTP
+501. Airflow 2.10.5 exposes task/DAG-run clearing and state mutation, but not a
+stable operation with guaranteed safe whole-run retry or cancellation of
+already-running work. DAG creation/editing, scheduler UI functionality, direct
+Airflow database mutation, notifications, and broader workflow management
+remain outside Task #8.
+
+Final acceptance passed all 28 documented criteria, 36 focused Task #8 tests,
+and the 219-test repository suite (215 passed, 4 intentionally skipped). A fresh live
+Airflow/dbt/metadata regression completed successfully, all services remained
+healthy, and no blocking defects were identified.
