@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -23,7 +24,7 @@ from framework.dataset import (  # noqa: E402
     verify_csv_mutation, write_airflow_dataset_override,
 )
 from framework.models import (  # noqa: E402
-    AirflowDagRun, AirflowTaskState, ContainerState, ValidationResult,
+    AirflowDagRun, AirflowTaskState, ApiResponse, ContainerState, ValidationResult,
     ValidationStatus,
 )
 from framework.reporting import write_report  # noqa: E402
@@ -38,6 +39,12 @@ from scenarios.postgres_interruption import (  # noqa: E402
 from scenarios.pipeline_recovery import (  # noqa: E402
     InvalidInputConfig, evaluate_invalid_task_states,
     execute as execute_invalid_input,
+)
+from framework.idempotency import (  # noqa: E402
+    MART_KEYS, RAW_KEYS, analyze_metadata_growth,
+)
+from scenarios.retry_idempotency import (  # noqa: E402
+    RetryIdempotencyConfig, execute as execute_retry_idempotency,
 )
 
 
@@ -586,6 +593,188 @@ class InvalidInputScenarioTests(unittest.TestCase):
         self.assertTrue(result.details["tier_b_restored"])
         self.assertEqual(docker.shared.standard_recreates, 1)
         self.assertEqual(docker.shared.invalid_recreates, 1)
+
+
+def idempotency_snapshot(index=0, same_run_duplicate=False):
+    row_counts = {table: EXPECTED_TIER_B_COUNTS[table] for table in RAW_KEYS}
+    row_counts.update({table: position + 1 for position, table in enumerate(MART_KEYS)})
+    duplicate_checks = {
+        "pipeline_runs": int(same_run_duplicate), "dbt_node_results": 0,
+        "table_health_metrics": 0, "data_incidents": 0,
+    }
+    return {
+        "row_counts": row_counts,
+        "raw_duplicate_checks": {table: 0 for table in RAW_KEYS},
+        "mart_duplicate_checks": {table: 0 for table in MART_KEYS},
+        "metadata_counts": {
+            "metadata.pipeline_runs": 10 + index,
+            "metadata.dbt_node_results": 1000 + index * 20,
+            "metadata.table_health_metrics": 100 + index * 16,
+            "metadata.data_incidents": 2,
+            "metadata.open_data_incidents": 1,
+        },
+        "metadata_same_run_duplicate_checks": duplicate_checks,
+        "open_incident_condition_groups": 0,
+        "latest_successful_run_id": f"run-{index}",
+    }
+
+
+class IdempotencyAnalysisTests(unittest.TestCase):
+    def test_stable_repeated_counts_and_expected_append_only_growth(self):
+        analysis = analyze_metadata_growth(
+            idempotency_snapshot(0), idempotency_snapshot(1),
+            idempotency_snapshot(2),
+        )
+        self.assertEqual(analysis["classification"], "expected_append_only_history")
+        self.assertEqual(analysis["first_run_delta"]["metadata.pipeline_runs"], 1)
+
+    def test_same_run_metadata_duplication_is_unexpected(self):
+        analysis = analyze_metadata_growth(
+            idempotency_snapshot(0), idempotency_snapshot(1),
+            idempotency_snapshot(2, same_run_duplicate=True),
+        )
+        self.assertEqual(analysis["classification"], "unexpected_growth")
+
+
+class RetryDocker:
+    def __init__(self, final_health="healthy"):
+        self.final_health = final_health
+
+    def wait_for_service_healthy(self, service, timeout):
+        return ContainerState(service, "running", self.final_health, True)
+
+    def compose_environment_value(self, service, name):
+        return "/opt/open-dataops/domains/ecommerce/validation_data/tier_b"
+
+
+class RetryAirflow:
+    def __init__(self, duplicate_run_count=1, timeout=False):
+        self.trigger_count = 0
+        self.duplicate_run_count = duplicate_run_count
+        self.timeout = timeout
+
+    def wait_for_scheduler_healthy(self, timeout):
+        return ContainerState("scheduler", "running", "healthy", True)
+
+    def trigger_dag(self, dag_id):
+        self.trigger_count += 1
+        return AirflowDagRun(dag_id, f"valid-{self.trigger_count}", "queued")
+
+    def wait_for_dag_terminal_state(self, dag_id, run_id, timeout):
+        if self.timeout:
+            raise WaitTimeoutError("valid run timeout")
+        return AirflowDagRun(dag_id, run_id, "success")
+
+    def get_task_states(self, dag_id, run_id):
+        return successful_task_states(dag_id, run_id)
+
+    def list_dag_runs(self, dag_id):
+        return [AirflowDagRun(dag_id, "api-run-placeholder", "queued")]
+
+    def get_dag_run(self, dag_id, run_id):
+        return AirflowDagRun(
+            dag_id, run_id, "failed" if run_id == "failed-run" else "success"
+        )
+
+
+class RetryApi:
+    def __init__(self, airflow, password="validation-secret"):
+        self.airflow = airflow
+        self.password = password
+        self.api_run_id = None
+
+    def wait_for_health(self, timeout):
+        return True
+
+    def authenticate(self, username, password):
+        if password != self.password:
+            raise RuntimeError("bad credentials")
+        return "jwt-super-secret"
+
+    def trigger_dag_operation(self, dag_id, run_id, token):
+        self.api_run_id = run_id
+        self.airflow.list_dag_runs = lambda dag: [
+            AirflowDagRun(dag, run_id, "queued")
+            for _ in range(self.airflow.duplicate_run_count)
+        ]
+        calls = getattr(self, "calls", 0) + 1
+        self.calls = calls
+        return ApiResponse(
+            201 if calls == 1 else 409,
+            {"run_id": run_id} if calls == 1 else {"detail": "Pipeline operation conflict"},
+        )
+
+
+class RetryPostgres:
+    def database_size(self):
+        return "229 MB"
+
+
+class RetryIdempotencyScenarioTests(unittest.TestCase):
+    def execute_case(self, duplicate_run_count=1, final_health="healthy", timeout=False):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        airflow = RetryAirflow(duplicate_run_count, timeout)
+        api = RetryApi(airflow)
+        snapshots = [idempotency_snapshot(i) for i in (0, 1, 2, 3)]
+        invalid_result = ValidationResult(
+            "invalid_input", ValidationStatus.PASS, "start", "end", 1, "ok",
+            details={
+                "invalid_run_id": "failed-run", "invalid_run_final_state": "failed",
+                "recovery_run_id": "recovery-run", "recovery_run_final_state": "success",
+            },
+        )
+        with patch.dict(os.environ, {
+            "VALIDATION_API_USERNAME": "operator",
+            "VALIDATION_API_PASSWORD": "validation-secret",
+        }, clear=False), patch(
+            "scenarios.retry_idempotency.capture_database_snapshot",
+            side_effect=snapshots,
+        ), patch(
+            "scenarios.retry_idempotency.execute_invalid_input",
+            return_value=(invalid_result, Path(directory.name) / "invalid.json"),
+        ):
+            result, report = execute_retry_idempotency(
+                RetryIdempotencyConfig(timeout=.01, report_dir=directory.name),
+                RetryDocker(final_health), airflow, RetryPostgres(), api,
+                lambda client: airflow,
+            )
+        return result, report
+
+    def test_complete_retry_idempotency_contract_passes_and_redacts_credentials(self):
+        result, report = self.execute_case()
+        self.assertEqual(result.status, ValidationStatus.PASS)
+        self.assertTrue(result.details["raw_counts_stable"])
+        self.assertTrue(result.details["mart_counts_stable"])
+        self.assertTrue(result.details["duplicate_trigger_protection_result"])
+        self.assertTrue(result.details["failed_run_history_preserved"])
+        serialized = report.read_text(encoding="utf-8")
+        self.assertNotIn("validation-secret", serialized)
+        self.assertNotIn("jwt-super-secret", serialized)
+
+    def test_unintended_second_api_run_is_fail(self):
+        result, _ = self.execute_case(duplicate_run_count=2)
+        self.assertEqual(result.status, ValidationStatus.FAIL)
+        self.assertFalse(result.details["duplicate_trigger_protection_result"])
+
+    def test_unhealthy_final_service_is_fail(self):
+        result, _ = self.execute_case(final_health="unhealthy")
+        self.assertEqual(result.status, ValidationStatus.FAIL)
+
+    def test_timeout_is_error(self):
+        result, _ = self.execute_case(timeout=True)
+        self.assertEqual(result.status, ValidationStatus.ERROR)
+
+    def test_missing_credentials_is_clear_error(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {}, clear=True
+        ):
+            result, _ = execute_retry_idempotency(
+                RetryIdempotencyConfig(report_dir=directory), RetryDocker(),
+                RetryAirflow(), RetryPostgres(), RetryApi(RetryAirflow()),
+            )
+        self.assertEqual(result.status, ValidationStatus.ERROR)
+        self.assertIn("VALIDATION_API_USERNAME", result.errors[0])
 
 
 if __name__ == "__main__":

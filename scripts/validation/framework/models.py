@@ -67,6 +67,12 @@ class ApiLoadResult:
     status_counts: dict[int, int]
 
 
+@dataclass(frozen=True)
+class ApiResponse:
+    status_code: int
+    payload: Any
+
+
 @dataclass
 class ValidationResult:
     test_name: str

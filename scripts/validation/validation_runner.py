@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import os
 
+from dotenv import load_dotenv
+
 from framework.docker import DockerClient
 from framework.models import ValidationStatus
 from framework.reporting import print_summary
@@ -13,8 +15,14 @@ from scenarios.pipeline_recovery import InvalidInputConfig, run as run_invalid_i
 from scenarios.scheduler_interruption import (
     SchedulerInterruptionConfig, run as run_scheduler_interruption,
 )
+from scenarios.retry_idempotency import (
+    RetryIdempotencyConfig, run as run_retry_idempotency,
+)
 
-AVAILABLE = {"scheduler-interruption", "postgres-interruption", "invalid-input"}
+AVAILABLE = {
+    "scheduler-interruption", "postgres-interruption", "invalid-input",
+    "retry-idempotency",
+}
 NOT_IMPLEMENTED = {"api-restart", "concurrent-api-pipeline"}
 
 
@@ -34,6 +42,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    load_dotenv(override=False)
     args = parser().parse_args()
     if args.scenario == "list":
         print("Available:")
@@ -61,13 +70,18 @@ def main() -> int:
             args.timeout, args.report_dir,
         )
         result, path = run_postgres_interruption(postgres_config, docker)
-    else:
+    elif args.scenario == "invalid-input":
         invalid_config = InvalidInputConfig(
             dag_id=args.dag_id, timeout=args.timeout, report_dir=args.report_dir,
             invalid_value=args.invalid_value,
             keep_work_directory=args.keep_work_directory,
         )
         result, path = run_invalid_input(invalid_config, docker)
+    else:
+        retry_config = RetryIdempotencyConfig(
+            dag_id=args.dag_id, timeout=args.timeout, report_dir=args.report_dir,
+        )
+        result, path = run_retry_idempotency(retry_config, docker)
     print_summary(result, path)
     return 0 if result.status is ValidationStatus.PASS else (1 if result.status is ValidationStatus.FAIL else 2)
 

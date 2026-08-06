@@ -21,8 +21,9 @@ reporting helpers. `scenarios/` holds orchestration only. The command layer alwa
 uses argument arrays and captures stdout, stderr, exit status, timestamps, and
 duration. Reports are UTF-8 JSON under `runtime/validation/reports/` by default.
 
-Complete scenarios are `scheduler-interruption`, `postgres-interruption`, and
-`invalid-input`. The API restart and concurrent API/pipeline entry points are
+Complete scenarios are `scheduler-interruption`, `postgres-interruption`,
+`invalid-input`, and `retry-idempotency`. The API restart and concurrent
+API/pipeline entry points are
 explicitly marked `NOT_IMPLEMENTED` and return no false PASS result.
 
 ## Running
@@ -66,6 +67,18 @@ python scripts/validation/validation_runner.py invalid-input
 Temporary copied data and its Compose override are deleted after the report by
 default. Use `--keep-work-directory` to retain them for investigation. Mounted
 Airflow task logs are retained as report artifacts in `runtime/logs/airflow`.
+
+Retry/idempotency validation repeats valid Tier B runs, inspects raw, mart, and
+metadata identities, submits an identical Operations API run ID twice, and reuses
+the controlled invalid-input/recovery workflow:
+
+```console
+python scripts/validation/validation_runner.py retry-idempotency
+```
+
+This scenario requires `VALIDATION_API_USERNAME` and
+`VALIDATION_API_PASSWORD` for an existing Admin or Operator account. They are
+used only for authentication and are never included in reports.
 
 Options include `--compose-file`, `--validation-compose-file`, `--dag-id`,
 `--target-task`, `--interruption-seconds`, `--timeout`, and `--report-dir`.

@@ -44,6 +44,12 @@ class PostgresClient:
         rows = self.execute_read_only_query(f"SELECT pg_size_pretty(pg_database_size('{self.database}')) AS size")
         return rows[1][0] if len(rows) > 1 else "unknown"
 
+    def scalar_read_only_query(self, sql: str) -> str:
+        rows = self.execute_read_only_query(sql)
+        if len(rows) != 2 or len(rows[1]) != 1:
+            raise ValueError("Expected a query returning exactly one scalar row")
+        return rows[1][0]
+
     def table_row_counts(self, tables: list[str]) -> dict[str, int]:
         counts = {}
         for table in tables:

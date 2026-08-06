@@ -8,9 +8,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from urllib.parse import quote
 from typing import Any
 
-from .models import ApiLoadResult
+from .models import ApiLoadResult, ApiResponse
 from .timing import wait_until
 
 
@@ -61,6 +62,29 @@ class ApiClient:
         if status // 100 != 2 or not isinstance(payload, dict) or not payload.get("access_token"):
             raise RuntimeError("API authentication failed")
         return str(payload["access_token"])
+
+    def request_captured(
+        self, endpoint: str, token: str | None = None, method: str = "GET",
+        data: dict[str, Any] | None = None,
+    ) -> ApiResponse:
+        try:
+            status, payload = self.request(endpoint, token, method, data)
+            return ApiResponse(status, payload)
+        except urllib.error.HTTPError as exc:
+            raw = exc.read()
+            try:
+                payload = json.loads(raw) if raw else None
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                payload = {"detail": "Non-JSON API error response"}
+            return ApiResponse(exc.code, payload)
+
+    def trigger_dag_operation(
+        self, dag_id: str, run_id: str, token: str,
+    ) -> ApiResponse:
+        return self.request_captured(
+            f"/api/v1/operations/dags/{quote(dag_id, safe='')}/trigger",
+            token=token, method="POST", data={"run_id": run_id},
+        )
 
     def health_check(self) -> bool:
         try:
