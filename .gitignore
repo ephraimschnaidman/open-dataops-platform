@@ -42,3 +42,8 @@ runtime/**/*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Validation files
+runtime/validation/
+scripts/validation/reports/
+domains/ecommerce/validation_data/

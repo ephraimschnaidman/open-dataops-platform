@@ -11,7 +11,12 @@ from dotenv import load_dotenv
 from psycopg import sql
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SAMPLE_DATA_DIR = REPO_ROOT / "domains" / "ecommerce" / "sample_data"
+SAMPLE_DATA_DIR = Path(
+    os.getenv(
+        "ECOMMERCE_DATA_DIR",
+        REPO_ROOT / "domains" / "ecommerce" / "sample_data",
+    )
+)
 DDL_PATH = REPO_ROOT / "platform" / "warehouse" / "sql" / "create_raw_ecommerce_tables.sql"
 TABLE_LOADS = [("customers.csv", "customers"), ("products.csv", "products"),
                ("orders.csv", "orders"), ("order_items.csv", "order_items"),
