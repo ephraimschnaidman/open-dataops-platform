@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+import argparse
+import os
+
+from framework.docker import DockerClient
+from framework.models import ValidationStatus
+from framework.reporting import print_summary
+from scenarios.scheduler_interruption import SchedulerInterruptionConfig, run
+
+AVAILABLE = {"scheduler-interruption"}
+NOT_IMPLEMENTED = {"api-restart", "postgres-interruption", "concurrent-api-pipeline", "pipeline-recovery"}
+
+
+def parser() -> argparse.ArgumentParser:
+    value = argparse.ArgumentParser(description="Open DataOps production validation runner")
+    value.add_argument("scenario", choices=["list", *sorted(AVAILABLE | NOT_IMPLEMENTED)])
+    value.add_argument("--compose-file", default=os.getenv("VALIDATION_COMPOSE_FILE", "docker-compose.yml"))
+    value.add_argument("--validation-compose-file", default=os.getenv("VALIDATION_OVERRIDE_FILE", "docker-compose.validation.yml"))
+    value.add_argument("--dag-id", default=os.getenv("VALIDATION_DAG_ID", "ecommerce_pipeline"))
+    value.add_argument("--target-task", default=os.getenv("VALIDATION_TARGET_TASK", "run_dbt"))
+    value.add_argument("--interruption-seconds", type=float, default=float(os.getenv("VALIDATION_INTERRUPTION_SECONDS", "10")))
+    value.add_argument("--timeout", type=float, default=float(os.getenv("VALIDATION_TIMEOUT", "600")))
+    value.add_argument("--report-dir", default=os.getenv("VALIDATION_REPORT_DIR", "runtime/validation/reports"))
+    return value
+
+
+def main() -> int:
+    args = parser().parse_args()
+    if args.scenario == "list":
+        print("Available:")
+        for name in sorted(AVAILABLE):
+            print(f"  {name}")
+        print("Not implemented:")
+        for name in sorted(NOT_IMPLEMENTED):
+            print(f"  {name}")
+        return 0
+    if args.scenario in NOT_IMPLEMENTED:
+        print(f"Scenario '{args.scenario}' is NOT_IMPLEMENTED")
+        return 3
+    if args.timeout <= 0 or args.interruption_seconds < 0:
+        parser().error("--timeout must be positive and --interruption-seconds must not be negative")
+    docker = DockerClient(args.compose_file, args.validation_compose_file)
+    config = SchedulerInterruptionConfig(
+        args.dag_id, args.target_task, args.interruption_seconds,
+        args.timeout, args.report_dir,
+    )
+    result, path = run(config, docker)
+    print_summary(result, path)
+    return 0 if result.status is ValidationStatus.PASS else (1 if result.status is ValidationStatus.FAIL else 2)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

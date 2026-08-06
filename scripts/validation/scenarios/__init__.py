@@ -1,0 +1,1 @@
+"""Validation scenario entry points."""
