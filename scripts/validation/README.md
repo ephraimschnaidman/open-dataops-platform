@@ -21,8 +21,8 @@ reporting helpers. `scenarios/` holds orchestration only. The command layer alwa
 uses argument arrays and captures stdout, stderr, exit status, timestamps, and
 duration. Reports are UTF-8 JSON under `runtime/validation/reports/` by default.
 
-Complete scenarios are `scheduler-interruption` and `postgres-interruption`.
-The API restart, concurrent API/pipeline, and pipeline recovery entry points are
+Complete scenarios are `scheduler-interruption`, `postgres-interruption`, and
+`invalid-input`. The API restart and concurrent API/pipeline entry points are
 explicitly marked `NOT_IMPLEMENTED` and return no false PASS result.
 
 ## Running
@@ -53,6 +53,19 @@ run to validate pipeline recovery:
 ```console
 python scripts/validation/validation_runner.py postgres-interruption
 ```
+
+Invalid-input validation copies Tier B under `runtime/validation/work`, mutates
+one payment method only in that copy, and layers a temporary Compose override.
+It expects `test_dbt` to reject the invalid value, restores standard Tier B,
+then runs a separate recovery DAG:
+
+```console
+python scripts/validation/validation_runner.py invalid-input
+```
+
+Temporary copied data and its Compose override are deleted after the report by
+default. Use `--keep-work-directory` to retain them for investigation. Mounted
+Airflow task logs are retained as report artifacts in `runtime/logs/airflow`.
 
 Options include `--compose-file`, `--validation-compose-file`, `--dag-id`,
 `--target-task`, `--interruption-seconds`, `--timeout`, and `--report-dir`.

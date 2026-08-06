@@ -18,6 +18,10 @@ from framework.airflow import (  # noqa: E402
 from framework.api import percentile  # noqa: E402
 from framework.command import CommandTimeoutError, run_command  # noqa: E402
 from framework.docker import parse_container_state  # noqa: E402
+from framework.dataset import (  # noqa: E402
+    copy_validation_dataset, mutate_csv_value, parse_dbt_failure_evidence,
+    verify_csv_mutation, write_airflow_dataset_override,
+)
 from framework.models import (  # noqa: E402
     AirflowDagRun, AirflowTaskState, ContainerState, ValidationResult,
     ValidationStatus,
@@ -30,6 +34,10 @@ from scenarios.scheduler_interruption import (  # noqa: E402
 from scenarios.postgres_interruption import (  # noqa: E402
     EXPECTED_TIER_B_COUNTS, PostgresInterruptionConfig,
     execute as execute_postgres, validate_tier_b_counts,
+)
+from scenarios.pipeline_recovery import (  # noqa: E402
+    InvalidInputConfig, evaluate_invalid_task_states,
+    execute as execute_invalid_input,
 )
 
 
@@ -359,6 +367,225 @@ class PostgresInterruptionScenarioTests(unittest.TestCase):
             validation["mismatches"]["raw.orders"],
             {"expected": 200_000, "actual": 199_999},
         )
+
+
+class DatasetHelperTests(unittest.TestCase):
+    def make_dataset(self, root):
+        root = Path(root)
+        root.mkdir()
+        for name in (
+            "customers.csv", "products.csv", "orders.csv", "order_items.csv",
+            "web_events.csv",
+        ):
+            (root / name).write_text("id\n1\n", encoding="utf-8")
+        (root / "payments.csv").write_text(
+            "payment_id,payment_method\nPAY1,card\nPAY2,paypal\n",
+            encoding="utf-8",
+        )
+        return root
+
+    def test_temporary_dataset_copy_does_not_mutate_original(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = self.make_dataset(Path(directory) / "source")
+            original = (source / "payments.csv").read_bytes()
+            copied = copy_validation_dataset(source, Path(directory) / "copy")
+            mutation = mutate_csv_value(
+                copied / "payments.csv", "payment_method", "bank_transfer"
+            )
+            self.assertEqual(mutation["mutation_count"], 1)
+            self.assertEqual((source / "payments.csv").read_bytes(), original)
+            self.assertEqual(
+                verify_csv_mutation(
+                    copied / "payments.csv", "payment_method", "bank_transfer"
+                ), 1,
+            )
+
+    def test_mutation_verification_rejects_zero_or_multiple_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "payments.csv"
+            path.write_text(
+                "payment_method\nbank_transfer\nbank_transfer\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "found 2"):
+                verify_csv_mutation(path, "payment_method", "bank_transfer")
+
+    def test_temporary_compose_override_is_narrow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_airflow_dataset_override(
+                Path(directory) / "override.yml",
+                "/opt/airflow/runtime/validation/work/invalid_input_x/tier_b",
+            )
+            value = path.read_text(encoding="utf-8")
+            self.assertIn("airflow-scheduler", value)
+            self.assertIn("airflow-webserver", value)
+            self.assertEqual(value.count("ECOMMERCE_DATA_DIR"), 2)
+            self.assertNotIn("postgres:", value)
+
+    def test_dbt_failure_log_parser_extracts_concise_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "attempt=1.log"
+            name = "accepted_values_stg_payments_payment_method__card__paypal__apple_pay"
+            log.write_text(
+                f"Failure in test {name}\nGot 1 result, configured to fail\n"
+                "Done. PASS=107 WARN=0 ERROR=2 SKIP=0 TOTAL=109\n",
+                encoding="utf-8",
+            )
+            evidence = parse_dbt_failure_evidence([log])
+            self.assertEqual(evidence["test_names"], [name])
+            self.assertEqual(len(evidence["excerpts"]), 3)
+
+
+class InvalidInputSharedState:
+    def __init__(self):
+        self.standard_recreates = 0
+        self.invalid_recreates = 0
+
+
+class InvalidInputDocker:
+    def __init__(self, shared=None, invalid=False, override=None):
+        self.shared = shared or InvalidInputSharedState()
+        self.invalid = invalid
+        self.override = override
+
+    def with_additional_compose_files(self, paths):
+        return InvalidInputDocker(self.shared, True, Path(paths[0]))
+
+    def recreate_services(self, services):
+        if self.invalid:
+            self.shared.invalid_recreates += 1
+        else:
+            self.shared.standard_recreates += 1
+
+    def wait_for_service_healthy(self, service, timeout):
+        return ContainerState(service, "running", "healthy", True)
+
+    def compose_environment_value(self, service, name):
+        if not self.invalid:
+            return "/opt/open-dataops/domains/ecommerce/validation_data/tier_b"
+        line = next(
+            value.strip() for value in self.override.read_text(encoding="utf-8").splitlines()
+            if "ECOMMERCE_DATA_DIR:" in value
+        )
+        return line.split(": ", 1)[1]
+
+
+class InvalidInputPostgres:
+    def __init__(self, mismatch=False):
+        self.mismatch = mismatch
+
+    def wait_for_postgres_ready(self, timeout):
+        return True
+
+    def table_row_counts(self, tables):
+        counts = {table: EXPECTED_TIER_B_COUNTS[table] for table in tables}
+        if self.mismatch:
+            counts["raw.orders"] -= 1
+        return counts
+
+    def database_size(self):
+        return "229 MB"
+
+
+class InvalidInputApi:
+    def wait_for_health(self, timeout):
+        return True
+
+
+class InvalidInputAirflow:
+    def __init__(self, invalid, behavior):
+        self.invalid = invalid
+        self.behavior = behavior
+
+    def wait_for_scheduler_healthy(self, timeout):
+        return ContainerState("scheduler", "running", "healthy", True)
+
+    def trigger_dag(self, dag_id):
+        run_id = "validation__invalid" if self.invalid else "validation__recovery"
+        return AirflowDagRun(dag_id, run_id, "queued")
+
+    def wait_for_dag_terminal_state(self, dag_id, run_id, timeout):
+        if self.invalid and self.behavior == "timeout":
+            raise WaitTimeoutError("invalid DAG timeout")
+        return AirflowDagRun(
+            dag_id, run_id, "failed" if self.invalid else "success"
+        )
+
+    def get_task_states(self, dag_id, run_id):
+        if not self.invalid:
+            return successful_task_states(dag_id, run_id)
+        if self.behavior == "unexpected":
+            return successful_task_states(dag_id, run_id, "failed")
+        values = {
+            "bootstrap_raw_data": "success", "run_dbt": "success",
+            "test_dbt": "failed", "collect_dbt_metadata": "upstream_failed",
+            "collect_data_health_metrics": "upstream_failed",
+            "detect_data_incidents": "upstream_failed",
+        }
+        return [AirflowTaskState(dag_id, run_id, task, state)
+                for task, state in values.items()]
+
+
+class InvalidInputScenarioTests(unittest.TestCase):
+    def make_source(self, root):
+        return DatasetHelperTests().make_dataset(root)
+
+    def execute_case(self, behavior="expected", mismatch=False):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        source = self.make_source(root / "source")
+        log_root = root / "logs"
+        task_log = (
+            log_root / "dag_id=ecommerce_pipeline" / "run_id=validation__invalid"
+            / "task_id=test_dbt" / "attempt=1.log"
+        )
+        task_log.parent.mkdir(parents=True)
+        task_log.write_text(
+            "Failure in test accepted_values_stg_payments_payment_method__card__paypal__apple_pay\n"
+            "Got 1 result, configured to fail\n"
+            "Done. PASS=108 WARN=0 ERROR=1 SKIP=0 TOTAL=109\n",
+            encoding="utf-8",
+        )
+        docker = InvalidInputDocker()
+        result, report = execute_invalid_input(
+            InvalidInputConfig(
+                timeout=.01, report_dir=root / "reports",
+                source_dataset=source, work_root=root / "work",
+                runtime_log_root=log_root,
+            ),
+            docker, InvalidInputPostgres(mismatch), InvalidInputApi(),
+            lambda client: InvalidInputAirflow(client.invalid, behavior),
+        )
+        return result, report, docker
+
+    def test_expected_failed_dag_and_successful_recovery_are_pass(self):
+        result, report, docker = self.execute_case()
+        self.assertEqual(result.status, ValidationStatus.PASS)
+        self.assertEqual(result.details["observed_failed_task"], ["test_dbt"])
+        self.assertTrue(result.details["downstream_blocked"])
+        self.assertEqual(result.details["recovery_run_final_state"], "success")
+        self.assertTrue(result.details["recovery_dbt_tests_passed"])
+        self.assertTrue(result.details["tier_b_restored"])
+        self.assertEqual(docker.shared.standard_recreates, 1)
+        self.assertTrue(report.exists())
+        self.assertIn(str(report), result.artifacts)
+
+    def test_unexpected_task_failure_is_fail(self):
+        result, _, _ = self.execute_case(behavior="unexpected")
+        self.assertEqual(result.status, ValidationStatus.FAIL)
+        self.assertFalse(result.details["matches_expected_behavior"])
+
+    def test_row_count_mismatch_is_fail(self):
+        result, _, _ = self.execute_case(mismatch=True)
+        self.assertEqual(result.status, ValidationStatus.FAIL)
+        self.assertFalse(result.details["tier_b_count_validation"]["matches"])
+
+    def test_timeout_restores_tier_b_in_safety_path(self):
+        result, _, docker = self.execute_case(behavior="timeout")
+        self.assertEqual(result.status, ValidationStatus.ERROR)
+        self.assertTrue(result.details["tier_b_restored"])
+        self.assertEqual(docker.shared.standard_recreates, 1)
+        self.assertEqual(docker.shared.invalid_recreates, 1)
 
 
 if __name__ == "__main__":

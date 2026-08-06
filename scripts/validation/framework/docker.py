@@ -25,16 +25,28 @@ def parse_container_state(payload: str, name: str = "") -> ContainerState:
 class DockerClient:
     def __init__(self, compose_file: str | Path | None = None,
                  validation_compose_file: str | Path | None = None,
-                 command_timeout: float = 120.0):
+                 command_timeout: float = 120.0,
+                 additional_compose_files: Sequence[str | Path] | None = None):
         self.compose_file = Path(compose_file or os.getenv("VALIDATION_COMPOSE_FILE", "docker-compose.yml"))
         self.validation_compose_file = Path(validation_compose_file or os.getenv("VALIDATION_OVERRIDE_FILE", "docker-compose.validation.yml"))
         self.command_timeout = command_timeout
+        self.compose_files = [self.compose_file, self.validation_compose_file]
+        self.compose_files.extend(Path(value) for value in (additional_compose_files or []))
 
     def _compose(self, arguments: Sequence[str], timeout: float | None = None) -> CommandResult:
         return run_command(
-            ["docker", "compose", "-f", str(self.compose_file), "-f",
-             str(self.validation_compose_file), *arguments],
+            ["docker", "compose",
+             *(part for path in self.compose_files for part in ("-f", str(path))),
+             *arguments],
             timeout=timeout or self.command_timeout,
+        )
+
+    def with_additional_compose_files(
+        self, compose_files: Sequence[str | Path]
+    ) -> "DockerClient":
+        return DockerClient(
+            self.compose_file, self.validation_compose_file,
+            self.command_timeout, compose_files,
         )
 
     def compose_exec(self, service: str, command: Sequence[str], timeout: float | None = None) -> CommandResult:
@@ -48,6 +60,19 @@ class DockerClient:
 
     def restart_service(self, service: str) -> CommandResult:
         return self._compose(["restart", service])
+
+    def recreate_services(self, services: Sequence[str]) -> CommandResult:
+        if not services:
+            raise ValueError("at least one service is required")
+        return self._compose(
+            ["up", "-d", "--force-recreate", "--no-deps", *services],
+            timeout=max(self.command_timeout, 300.0),
+        )
+
+    def compose_environment_value(self, service: str, name: str) -> str:
+        if not name or not name.replace("_", "").isalnum():
+            raise ValueError(f"Invalid environment variable name: {name}")
+        return self.compose_exec(service, ["printenv", name]).stdout.strip()
 
     def inspect_container(self, container_name: str) -> CommandResult:
         return run_command(["docker", "inspect", container_name], timeout=self.command_timeout)
