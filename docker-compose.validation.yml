@@ -1,0 +1,11 @@
+services:
+  airflow-scheduler:
+    environment:
+      ECOMMERCE_DATA_DIR: /opt/open-dataops/domains/ecommerce/validation_data/tier_b
+
+  airflow-webserver:
+    environment:
+      ECOMMERCE_DATA_DIR: /opt/open-dataops/domains/ecommerce/validation_data/tier_b
+
+
+      
