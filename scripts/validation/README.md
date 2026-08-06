@@ -21,9 +21,9 @@ reporting helpers. `scenarios/` holds orchestration only. The command layer alwa
 uses argument arrays and captures stdout, stderr, exit status, timestamps, and
 duration. Reports are UTF-8 JSON under `runtime/validation/reports/` by default.
 
-The first complete scenario is `scheduler-interruption`. The API restart,
-PostgreSQL interruption, concurrent API/pipeline, and pipeline recovery entry
-points are explicitly marked `NOT_IMPLEMENTED` and return no false PASS result.
+Complete scenarios are `scheduler-interruption` and `postgres-interruption`.
+The API restart, concurrent API/pipeline, and pipeline recovery entry points are
+explicitly marked `NOT_IMPLEMENTED` and return no false PASS result.
 
 ## Running
 
@@ -44,6 +44,15 @@ starts it, waits for container health, and records the native outcome. With
 LocalExecutor, stopping the scheduler can terminate its active child task; a
 failed DAG is reported as `FAIL`, never rewritten as recovery success. No task is
 cleared or retried by the scenario.
+
+The PostgreSQL scenario stops the database while `run_dbt` is active, verifies
+database and API recovery, and captures final raw and mart row counts. If the
+interrupted DAG fails, it leaves that run untouched and triggers a separate fresh
+run to validate pipeline recovery:
+
+```console
+python scripts/validation/validation_runner.py postgres-interruption
+```
 
 Options include `--compose-file`, `--validation-compose-file`, `--dag-id`,
 `--target-task`, `--interruption-seconds`, `--timeout`, and `--report-dir`.

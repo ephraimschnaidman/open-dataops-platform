@@ -27,6 +27,10 @@ from framework.timing import WaitTimeoutError  # noqa: E402
 from scenarios.scheduler_interruption import (  # noqa: E402
     SchedulerInterruptionConfig, execute,
 )
+from scenarios.postgres_interruption import (  # noqa: E402
+    EXPECTED_TIER_B_COUNTS, PostgresInterruptionConfig,
+    execute as execute_postgres, validate_tier_b_counts,
+)
 
 
 class CommandTests(unittest.TestCase):
@@ -198,6 +202,163 @@ class ScenarioTests(unittest.TestCase):
             self.assertIn("WaitTimeoutError", result.errors[0])
             self.assertEqual(result.details["last_observed_dag_state"], "running")
             self.assertTrue(path.exists())
+
+
+def successful_task_states(dag_id, run_id, run_dbt="success"):
+    values = {
+        "bootstrap_raw_data": "success", "run_dbt": run_dbt,
+        "test_dbt": "success" if run_dbt == "success" else "upstream_failed",
+        "collect_dbt_metadata": "success" if run_dbt == "success" else "upstream_failed",
+        "collect_data_health_metrics": "success" if run_dbt == "success" else "upstream_failed",
+        "detect_data_incidents": "success" if run_dbt == "success" else "upstream_failed",
+    }
+    return [AirflowTaskState(dag_id, run_id, task, state)
+            for task, state in values.items()]
+
+
+class PostgresScenarioDocker:
+    def __init__(self):
+        self.health_calls = []
+
+    def wait_for_service_healthy(self, service, timeout):
+        self.health_calls.append(service)
+        return ContainerState(service, "running", "healthy", True)
+
+
+class PostgresScenarioApi:
+    def wait_for_health(self, timeout):
+        return True
+
+
+class PostgresScenarioClient:
+    def __init__(self, readiness=None):
+        self.readiness = list(readiness or [True, True, True])
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    def wait_for_postgres_ready(self, timeout):
+        value = self.readiness.pop(0)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    def stop_postgres(self):
+        self.stop_calls += 1
+
+    def start_postgres(self):
+        self.start_calls += 1
+
+    def table_row_counts(self, tables):
+        return {table: EXPECTED_TIER_B_COUNTS.get(table, 1) for table in tables}
+
+    def database_size(self):
+        return "512 MB"
+
+
+class PostgresScenarioAirflow:
+    def __init__(self, interrupted_state="success"):
+        self.interrupted_state = interrupted_state
+        self.triggered = []
+        self.terminal_error = None
+        self.list_error = None
+
+    def wait_for_scheduler_healthy(self, timeout):
+        return ContainerState("scheduler", "running", "healthy", True)
+
+    def trigger_dag(self, dag_id):
+        run_id = "validation__interrupted" if not self.triggered else "validation__fresh"
+        self.triggered.append(run_id)
+        return AirflowDagRun(dag_id, run_id, "queued")
+
+    def wait_for_task_state(self, dag_id, run_id, task_id, expected, timeout):
+        return AirflowTaskState(dag_id, run_id, task_id, "running")
+
+    def wait_for_dag_terminal_state(self, dag_id, run_id, timeout):
+        if self.terminal_error:
+            raise self.terminal_error
+        state = self.interrupted_state if run_id.endswith("interrupted") else "success"
+        return AirflowDagRun(dag_id, run_id, state)
+
+    def get_task_states(self, dag_id, run_id):
+        failed = run_id.endswith("interrupted") and self.interrupted_state == "failed"
+        return successful_task_states(dag_id, run_id, "failed" if failed else "success")
+
+    def list_dag_runs(self, dag_id):
+        if self.list_error:
+            raise self.list_error
+        return [AirflowDagRun(dag_id, "validation__interrupted", "running")]
+
+
+class PostgresInterruptionScenarioTests(unittest.TestCase):
+    def execute_case(self, airflow=None, postgres=None):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        return execute_postgres(
+            PostgresInterruptionConfig(
+                interruption_seconds=0, timeout=.01, report_dir=directory.name
+            ),
+            PostgresScenarioDocker(), airflow or PostgresScenarioAirflow(),
+            postgres or PostgresScenarioClient(), PostgresScenarioApi(),
+        )
+
+    def test_successful_postgres_readiness_recovery_passes(self):
+        postgres = PostgresScenarioClient()
+        result, path = self.execute_case(postgres=postgres)
+        self.assertEqual(result.status, ValidationStatus.PASS)
+        self.assertTrue(result.details["postgres_readiness_after_recovery"])
+        self.assertTrue(result.details["postgres_left_running_healthy"])
+        self.assertEqual(postgres.start_calls, 2)
+        self.assertTrue(path.exists())
+
+    def test_safety_restart_after_recovery_exception(self):
+        postgres = PostgresScenarioClient(
+            [True, RuntimeError("readiness lookup failed"), True]
+        )
+        result, _ = self.execute_case(postgres=postgres)
+        self.assertEqual(result.status, ValidationStatus.ERROR)
+        self.assertEqual(postgres.start_calls, 2)
+        self.assertTrue(result.details["safety_restart_attempted"])
+        self.assertTrue(result.details["postgres_left_running_healthy"])
+
+    def test_controlled_dag_failure_is_fail_and_fresh_run_succeeds(self):
+        airflow = PostgresScenarioAirflow(interrupted_state="failed")
+        result, _ = self.execute_case(airflow=airflow)
+        self.assertEqual(result.status, ValidationStatus.FAIL)
+        self.assertEqual(result.details["interrupted_dag_final_state"], "failed")
+        self.assertTrue(result.details["manual_recovery_required"])
+        self.assertEqual(result.details["fresh_recovery_run_state"], "success")
+        self.assertTrue(result.details["fresh_recovery_dbt_tests_passed"])
+        self.assertEqual(airflow.triggered, ["validation__interrupted", "validation__fresh"])
+
+    def test_task_evidence_survives_failed_dag_run_lookup(self):
+        airflow = PostgresScenarioAirflow()
+        airflow.terminal_error = RuntimeError("terminal lookup failed")
+        airflow.list_error = RuntimeError("listing unavailable")
+        result, _ = self.execute_case(airflow=airflow)
+        self.assertEqual(result.status, ValidationStatus.ERROR)
+        self.assertIn("run_dbt", result.details["last_observed_task_states"])
+        self.assertTrue(any("DAG-run evidence" in error for error in result.errors))
+
+    def test_target_task_timeout_is_error_without_stopping_postgres(self):
+        airflow = PostgresScenarioAirflow()
+        airflow.wait_for_task_state = lambda *args, **kwargs: (_ for _ in ()).throw(
+            WaitTimeoutError("run_dbt timeout")
+        )
+        postgres = PostgresScenarioClient()
+        result, _ = self.execute_case(airflow=airflow, postgres=postgres)
+        self.assertEqual(result.status, ValidationStatus.ERROR)
+        self.assertEqual(postgres.stop_calls, 0)
+        self.assertEqual(postgres.start_calls, 0)
+
+    def test_tier_b_row_count_validation_reports_mismatch(self):
+        counts = dict(EXPECTED_TIER_B_COUNTS)
+        counts["raw.orders"] -= 1
+        validation = validate_tier_b_counts(counts)
+        self.assertFalse(validation["matches"])
+        self.assertEqual(
+            validation["mismatches"]["raw.orders"],
+            {"expected": 200_000, "actual": 199_999},
+        )
 
 
 if __name__ == "__main__":

@@ -6,10 +6,15 @@ import os
 from framework.docker import DockerClient
 from framework.models import ValidationStatus
 from framework.reporting import print_summary
-from scenarios.scheduler_interruption import SchedulerInterruptionConfig, run
+from scenarios.postgres_interruption import (
+    PostgresInterruptionConfig, run as run_postgres_interruption,
+)
+from scenarios.scheduler_interruption import (
+    SchedulerInterruptionConfig, run as run_scheduler_interruption,
+)
 
-AVAILABLE = {"scheduler-interruption"}
-NOT_IMPLEMENTED = {"api-restart", "postgres-interruption", "concurrent-api-pipeline", "pipeline-recovery"}
+AVAILABLE = {"scheduler-interruption", "postgres-interruption"}
+NOT_IMPLEMENTED = {"api-restart", "concurrent-api-pipeline", "pipeline-recovery"}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -41,11 +46,18 @@ def main() -> int:
     if args.timeout <= 0 or args.interruption_seconds < 0:
         parser().error("--timeout must be positive and --interruption-seconds must not be negative")
     docker = DockerClient(args.compose_file, args.validation_compose_file)
-    config = SchedulerInterruptionConfig(
-        args.dag_id, args.target_task, args.interruption_seconds,
-        args.timeout, args.report_dir,
-    )
-    result, path = run(config, docker)
+    if args.scenario == "scheduler-interruption":
+        config = SchedulerInterruptionConfig(
+            args.dag_id, args.target_task, args.interruption_seconds,
+            args.timeout, args.report_dir,
+        )
+        result, path = run_scheduler_interruption(config, docker)
+    else:
+        postgres_config = PostgresInterruptionConfig(
+            args.dag_id, args.target_task, args.interruption_seconds,
+            args.timeout, args.report_dir,
+        )
+        result, path = run_postgres_interruption(postgres_config, docker)
     print_summary(result, path)
     return 0 if result.status is ValidationStatus.PASS else (1 if result.status is ValidationStatus.FAIL else 2)
 
