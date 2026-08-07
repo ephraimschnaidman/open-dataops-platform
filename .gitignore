@@ -18,6 +18,12 @@ venv/
 !.vscode/extensions.json
 !.vscode/settings.json
 
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
 # Docker / local volumes
 docker-data/
 volumes/
