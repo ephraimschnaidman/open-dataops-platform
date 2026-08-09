@@ -13,7 +13,7 @@ interface NavGroup {
 
 const navGroups: NavGroup[] = [
     { label: "", items: [{ name: "Dashboard", icon: LayoutDashboard, href: "/" }] },
-    { label: "Build", items: [{ name: "Data Sources", icon: Database, href: "/data-sources" }, { name: "Pipelines", icon: GitBranch }, { name: "Metadata", icon: Boxes }] },
+    { label: "Build", items: [{ name: "Data Sources", icon: Database, href: "/data-sources" }, { name: "Pipelines", icon: GitBranch, href: "/pipelines" }, { name: "Metadata", icon: Boxes }] },
     { label: "Operate", items: [{ name: "Pipeline Runs", icon: Activity }, { name: "Monitoring", icon: MonitorDot }, { name: "Alerts", icon: ShieldAlert, count: 4 }, { name: "Logs", icon: FileText }] },
     { label: "Platform", items: [{ name: "Validation", icon: FileCheck2 }, { name: "Health Metrics", icon: HeartPulse }, { name: "Settings", icon: Settings }] },
 ];
