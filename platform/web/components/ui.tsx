@@ -1,9 +1,30 @@
-import { AlertTriangle, Check, LoaderCircle, RotateCw } from "lucide-react";
+import { AlertTriangle, Check, CircleAlert, LoaderCircle, RotateCw } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import Link from "next/link";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { OperationalResult } from "@/lib/operational-status";
+export type { OperationalResult, OperationalState } from "@/lib/operational-status";
+
+export function Breadcrumbs({ items }: { items: Array<{ label: string; href?: string }> }) {
+    return <nav aria-label="Breadcrumb" className="mb-4"><ol className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">{items.map((item, index) => <li key={item.label} className="flex items-center gap-1.5">{index > 0 && <span aria-hidden="true" className="text-zinc-300">/</span>}{item.href ? <Link href={item.href} className="hover:text-zinc-700">{item.label}</Link> : <span aria-current="page" className="font-medium text-zinc-600">{item.label}</span>}</li>)}</ol></nav>;
+}
+
+export function Button({ variant = "secondary", className = "", children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" }) {
+    const styles = variant === "primary" ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800" : variant === "ghost" ? "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900" : "border border-zinc-200 bg-white text-zinc-700 shadow-card hover:bg-zinc-50";
+    return <button className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition ${styles} ${className}`} {...props}>{children}</button>;
+}
+
+export function Card({ title, description, action, children, className = "" }: { title?: string; description?: string; action?: ReactNode; children: ReactNode; className?: string }) {
+    return <div className={`rounded-lg border border-zinc-200 bg-white shadow-card ${className}`}>{(title || description || action) && <div className="flex items-start justify-between gap-4 border-b border-zinc-100 px-4 py-3.5"><div>{title && <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-zinc-900">{title}</h2>}{description && <p className="mt-0.5 text-xs text-zinc-500">{description}</p>}</div>{action}</div>}{children}</div>;
+}
+
+export function OperationalStatus({ result }: { result: OperationalResult }) {
+    const tone = result.status === "Success" ? { box: "border-emerald-100 bg-emerald-50/60", icon: "bg-emerald-100 text-emerald-700", action: "text-emerald-800" } : result.status === "Warning" ? { box: "border-amber-100 bg-amber-50/60", icon: "bg-amber-100 text-amber-700", action: "text-amber-800" } : { box: "border-rose-100 bg-rose-50/60", icon: "bg-rose-100 text-rose-700", action: "text-rose-800" };
+    return <div className={`rounded-lg border p-4 ${tone.box}`}><div className="flex items-start gap-3"><span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full ${tone.icon}`}>{result.status === "Success" ? <Check className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}</span><div className="min-w-0 flex-1"><p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Status</p><StatusBadge status={result.status} /><p className="mt-2 text-sm font-medium leading-5 text-zinc-900">{result.message}</p><dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2"><div><dt className="text-zinc-500">Platform Code</dt><dd className="mt-0.5 font-mono font-medium text-zinc-800">{result.platformCode}</dd></div>{result.vendorCode && <div><dt className="text-zinc-500">Vendor Code</dt><dd className="mt-0.5 font-mono font-medium text-zinc-800">{result.vendorCode}</dd></div>}</dl><div className="mt-3 border-t border-current/10 pt-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Recommended Action</p><p className={`mt-1 text-xs leading-5 ${tone.action}`}>{result.recommendedAction}</p></div></div></div></div>;
+}
 
 export function PageHeader({ title, description, eyebrow, action }: { title: string; description: string; eyebrow?: ReactNode; action?: ReactNode }) {
-    return <div className="mb-7 flex items-end justify-between gap-4"><div>{eyebrow && <div className="mb-1.5 flex items-center gap-2 text-[11px] font-medium text-zinc-400">{eyebrow}</div>}<h1 className="text-2xl font-semibold tracking-[-0.035em] text-zinc-950">{title}</h1><p className="mt-1 text-sm text-zinc-500">{description}</p></div>{action}</div>;
+    return <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end"><div>{eyebrow && <div className="mb-1.5 flex items-center gap-2 text-[11px] font-medium text-zinc-400">{eyebrow}</div>}<h1 className="text-2xl font-semibold tracking-[-0.035em] text-zinc-950">{title}</h1><p className="mt-1 text-sm text-zinc-500">{description}</p></div>{action}</div>;
 }
 
 export function MetricCard({ label, value, detail, icon: Icon, tone = "neutral" }: { label: string; value: string; detail: string; icon: LucideIcon; tone?: "neutral" | "positive" | "warning" | "danger" }) {
@@ -36,6 +57,7 @@ const badgeStyles = {
     Healthy: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
     Disconnected: "bg-rose-50 text-rose-700 ring-rose-600/20",
     Disabled: "bg-zinc-100 text-zinc-600 ring-zinc-500/20",
+    Error: "bg-rose-50 text-rose-700 ring-rose-600/20",
 };
 
 export function StatusBadge({ status }: { status: keyof typeof badgeStyles }) {

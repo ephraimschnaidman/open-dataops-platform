@@ -1,16 +1,13 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, Boxes, Database, HardDrive, MoreHorizontal, Network, Plus, Search, Server, Warehouse, X } from "lucide-react";
 import { dataSources, sortDataSources, type DataSource, type DataSourceEnvironment, type DataSourceStatus, type DataSourceType } from "@/lib/data-sources-data";
-import { EmptyState, ErrorState, MetricCard, PageHeader, Skeleton, StatusBadge } from "@/components/ui";
+import { Button, EmptyState, ErrorState, MetricCard, PageHeader, Skeleton, StatusBadge } from "@/components/ui";
 
 const typeIcons: Record<DataSourceType, typeof Database> = { PostgreSQL: Database, Snowflake: Warehouse, MySQL: Database, Kafka: Network, "Amazon S3": HardDrive, "SQL Server": Server };
 const environmentDots: Record<DataSourceEnvironment, string> = { Production: "bg-emerald-500", Staging: "bg-blue-400", Development: "bg-zinc-400" };
-
-function PrimaryButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-    return <button onClick={onClick} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white shadow-sm hover:bg-zinc-800"><Plus className="h-3.5 w-3.5" />{children}</button>;
-}
 
 function SourceMetrics({ sources }: { sources: DataSource[] }) {
     const healthy = sources.filter((source) => source.status === "Healthy").length;
@@ -24,6 +21,7 @@ function SourceTable({ sources, onSelect, onAction }: { sources: DataSource[]; o
 }
 
 export function DataSourcesPage() {
+    const router = useRouter();
     const [query, setQuery] = useState("");
     const [status, setStatus] = useState<DataSourceStatus | "All">("All");
     const [environment, setEnvironment] = useState<DataSourceEnvironment | "All">("All");
@@ -33,10 +31,10 @@ export function DataSourcesPage() {
     const clearFilters = () => { setQuery(""); setStatus("All"); setEnvironment("All"); };
     const showNotice = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 3000); };
 
-    return <div className="animate-enter"><PageHeader title="Data Sources" description="Manage systems that provide data to your pipelines." eyebrow={<><Network className="h-3 w-3" /> Production workspace</>} action={<PrimaryButton onClick={() => showNotice("Add Data Source will be available in a later phase.")}>Add Data Source</PrimaryButton>} />
+    return <div className="animate-enter"><PageHeader title="Data Sources" description="Manage systems that provide data to your pipelines." eyebrow={<><Network className="h-3 w-3" /> Production workspace</>} action={<Button variant="primary" onClick={() => showNotice("Add Data Source will be available in a later phase.")}><Plus className="h-3.5 w-3.5" /> Add Data Source</Button>} />
         <SourceMetrics sources={dataSources} />
         <section className="mt-7"><div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center"><div className="relative w-full sm:max-w-xs"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or type..." aria-label="Search data sources" className="h-9 w-full rounded-md border border-zinc-200 bg-white pl-8 pr-8 text-xs text-zinc-800 shadow-card outline-none placeholder:text-zinc-400 hover:border-zinc-300" />{query && <button aria-label="Clear search" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-zinc-400 hover:text-zinc-700"><X className="h-3.5 w-3.5" /></button>}</div><select aria-label="Filter by status" value={status} onChange={(event) => setStatus(event.target.value as DataSourceStatus | "All")} className="h-9 rounded-md border border-zinc-200 bg-white px-2.5 text-xs text-zinc-600 shadow-card outline-none hover:border-zinc-300"><option value="All">All statuses</option><option>Healthy</option><option>Warning</option><option>Disconnected</option><option>Disabled</option></select><select aria-label="Filter by environment" value={environment} onChange={(event) => setEnvironment(event.target.value as DataSourceEnvironment | "All")} className="h-9 rounded-md border border-zinc-200 bg-white px-2.5 text-xs text-zinc-600 shadow-card outline-none hover:border-zinc-300"><option value="All">All environments</option><option>Production</option><option>Staging</option><option>Development</option></select><span className="text-[11px] text-zinc-400 sm:ml-auto">{filteredSources.length} {filteredSources.length === 1 ? "source" : "sources"}</span></div>
-            {loadError ? <ErrorState title="Unable to load data sources." description="Something went wrong while fetching the source inventory." onRetry={() => setLoadError(false)} /> : !dataSources.length ? <EmptyState title="No data sources connected" description="Connect a source to start providing data to your pipelines." icon={<Database className="h-4 w-4" />} action={<PrimaryButton onClick={() => showNotice("Add Data Source will be available in a later phase.")}>Add Data Source</PrimaryButton>} /> : !filteredSources.length ? <EmptyState title="No sources match your criteria" description="Try another search or clear the current filters." icon={<Search className="h-4 w-4" />} action={<button onClick={clearFilters} className="rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50">Clear filters</button>} /> : <SourceTable sources={filteredSources} onSelect={(source) => showNotice(`${source.name} details will be available in Phase 2.`)} onAction={(source) => showNotice(`Actions for ${source.name} will be available in a later phase.`)} />}
+            {loadError ? <ErrorState title="Unable to load data sources." description="Something went wrong while fetching the source inventory." onRetry={() => setLoadError(false)} /> : !dataSources.length ? <EmptyState title="No data sources connected" description="Connect a source to start providing data to your pipelines." icon={<Database className="h-4 w-4" />} action={<Button variant="primary" onClick={() => showNotice("Add Data Source will be available in a later phase.")}><Plus className="h-3.5 w-3.5" /> Add Data Source</Button>} /> : !filteredSources.length ? <EmptyState title="No sources match your criteria" description="Try another search or clear the current filters." icon={<Search className="h-4 w-4" />} action={<button onClick={clearFilters} className="rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50">Clear filters</button>} /> : <SourceTable sources={filteredSources} onSelect={(source) => router.push(`/data-sources/${source.id}`)} onAction={(source) => showNotice(`Actions for ${source.name} will be available in a later phase.`)} />}
         </section><button className="sr-only" onClick={() => setLoadError(true)}>Show error state</button>{notice && <div role="status" className="fixed bottom-5 right-5 z-50 rounded-lg border border-zinc-200 bg-zinc-900 px-3 py-2 text-xs text-white shadow-panel">{notice}</div>}</div>;
 }
 
