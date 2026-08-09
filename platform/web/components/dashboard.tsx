@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { Activity, ArrowRight, ChevronRight, CircleAlert, Database, GitBranch, MoreHorizontal, Network, ShieldCheck, X } from "lucide-react";
 import { activities, healthItems, issues, metrics, pipelineRuns, type Issue } from "@/lib/dashboard-data";
-import { EmptyState, ErrorState, Section, Skeleton, StatusBadge } from "@/components/ui";
+import { EmptyState, ErrorState, MetricCard, Section, Skeleton, StatusBadge } from "@/components/ui";
 
 function MetricCards() {
     const icons = [GitBranch, ShieldCheck, CircleAlert, Activity];
-    return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{metrics.map((metric, index) => { const Icon = icons[index]; return <div key={metric.label} className="rounded-lg border border-zinc-200 bg-white p-4 shadow-card"><div className="flex items-center justify-between"><p className="text-xs font-medium text-zinc-500">{metric.label}</p><span className={`grid h-7 w-7 place-items-center rounded-md ${metric.tone === "warning" ? "bg-amber-50 text-amber-600" : metric.tone === "positive" ? "bg-emerald-50 text-emerald-600" : "bg-zinc-100 text-zinc-500"}`}><Icon className="h-3.5 w-3.5" /></span></div><p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-zinc-950">{metric.value}</p><p className={`mt-1 text-[11px] ${metric.tone === "warning" ? "text-amber-700" : "text-zinc-500"}`}>{metric.detail}</p></div>})}</div>;
+    return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{metrics.map((metric, index) => <MetricCard key={metric.label} {...metric} icon={icons[index]} />)}</div>;
 }
 
 function Issues({ onSelect }: { onSelect: (issue: Issue) => void }) {

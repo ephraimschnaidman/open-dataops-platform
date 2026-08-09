@@ -1,11 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Activity, Bell, Boxes, CheckCircle2, ChevronDown, CircleGauge, Command, Database, FileCheck2, FileText, GitBranch, HeartPulse, LayoutDashboard, Menu, MonitorDot, Plus, Search, Settings, ShieldAlert, Sparkles, UserRound, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-const navGroups = [
-    { label: "", items: [{ name: "Dashboard", icon: LayoutDashboard }] },
-    { label: "Build", items: [{ name: "Data Sources", icon: Database }, { name: "Pipelines", icon: GitBranch }, { name: "Metadata", icon: Boxes }] },
+interface NavGroup {
+    label: string;
+    items: Array<{ name: string; icon: LucideIcon; href?: string; count?: number }>;
+}
+
+const navGroups: NavGroup[] = [
+    { label: "", items: [{ name: "Dashboard", icon: LayoutDashboard, href: "/" }] },
+    { label: "Build", items: [{ name: "Data Sources", icon: Database, href: "/data-sources" }, { name: "Pipelines", icon: GitBranch }, { name: "Metadata", icon: Boxes }] },
     { label: "Operate", items: [{ name: "Pipeline Runs", icon: Activity }, { name: "Monitoring", icon: MonitorDot }, { name: "Alerts", icon: ShieldAlert, count: 4 }, { name: "Logs", icon: FileText }] },
     { label: "Platform", items: [{ name: "Validation", icon: FileCheck2 }, { name: "Health Metrics", icon: HeartPulse }, { name: "Settings", icon: Settings }] },
 ];
@@ -18,9 +26,10 @@ const newItems = [
 ];
 
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+    const pathname = usePathname();
     return <><button aria-label="Close navigation" onClick={onClose} className={`fixed inset-0 z-30 bg-zinc-950/30 transition lg:hidden ${open ? "opacity-100" : "pointer-events-none opacity-0"}`} /><aside className={`fixed inset-y-0 left-0 z-40 flex w-[226px] flex-col border-r border-zinc-200 bg-[#fbfbfc] transition-transform duration-200 lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex h-14 items-center justify-between border-b border-zinc-200 px-4"><div className="flex items-center gap-2.5"><span className="grid h-7 w-7 place-items-center rounded-md bg-zinc-900 text-white"><CircleGauge className="h-4 w-4" /></span><span className="text-sm font-semibold tracking-[-0.02em]">Datum</span></div><button onClick={onClose} className="rounded-md p-1 text-zinc-500 hover:bg-zinc-100 lg:hidden"><X className="h-4 w-4" /></button></div>
-        <nav className="flex-1 overflow-y-auto px-2.5 py-3">{navGroups.map((group) => <div key={group.label || "primary"} className="mb-5">{group.label && <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.11em] text-zinc-400">{group.label}</p>}<div className="space-y-0.5">{group.items.map(({ name, icon: Icon, count }) => { const active = name === "Dashboard"; return <button key={name} onClick={onClose} className={`group flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-left text-[13px] transition ${active ? "bg-zinc-900 font-medium text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950"}`}><Icon className={`h-4 w-4 ${active ? "text-zinc-300" : "text-zinc-400 group-hover:text-zinc-600"}`} /><span className="flex-1">{name}</span>{count && <span className="rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700">{count}</span>}</button>})}</div></div>)}</nav>
+        <nav className="flex-1 overflow-y-auto px-2.5 py-3">{navGroups.map((group) => <div key={group.label || "primary"} className="mb-5">{group.label && <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.11em] text-zinc-400">{group.label}</p>}<div className="space-y-0.5">{group.items.map(({ name, icon: Icon, count, href }) => { const active = Boolean(href && (href === "/" ? pathname === "/" : pathname.startsWith(href))); const className = `group flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-left text-[13px] transition ${active ? "bg-zinc-900 font-medium text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950"}`; const content = <><Icon className={`h-4 w-4 ${active ? "text-zinc-300" : "text-zinc-400 group-hover:text-zinc-600"}`} /><span className="flex-1">{name}</span>{count && <span className="rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700">{count}</span>}</>; return href ? <Link key={name} href={href} onClick={onClose} className={className}>{content}</Link> : <button key={name} onClick={onClose} className={className}>{content}</button>; })}</div></div>)}</nav>
         <div className="border-t border-zinc-200 p-3"><div className="rounded-lg border border-zinc-200 bg-white p-3 shadow-card"><div className="flex items-center gap-2 text-xs font-medium"><Sparkles className="h-3.5 w-3.5 text-indigo-500" /> Usage this month</div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-100"><div className="h-full w-[68%] rounded-full bg-indigo-500" /></div><p className="mt-2 text-[11px] text-zinc-500">68% of included runs</p></div></div>
     </aside></>;
 }
