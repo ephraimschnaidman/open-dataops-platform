@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Activity, AlertTriangle, CircleCheck, CircleX, GitBranch, MoreHorizontal, Play, Search } from "lucide-react";
 import { pipelines } from "@/lib/pipelines-data";
+import { getPipelineRunDetail } from "@/lib/pipeline-run-detail-data";
 import {
     formatRunDuration,
     formatStartedAt,
@@ -40,7 +41,9 @@ function SupportingDataWarning({ onRetry }: { onRetry: () => void }) {
     return <div role="status" className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5 text-xs sm:flex-row sm:items-center"><AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" /><div className="min-w-0 flex-1"><span className="font-medium text-amber-900">Some pipeline details are unavailable.</span><span className="ml-2 font-mono text-[10px] text-amber-700">PIPELINE_REFERENCE_DATA_UNAVAILABLE</span></div><Button variant="ghost" className="h-7 self-start px-2 text-amber-800 hover:bg-amber-100 sm:self-auto" onClick={onRetry}>Try Again</Button></div>;
 }
 
-function PipelineRunsTable({ runs, now, activeMenu, onMenuChange, onOpen, onRetry, onCancel, onViewPipeline, onViewLogs }: { runs: PipelineRun[]; now: number; activeMenu: string | null; onMenuChange: (id: string | null) => void; onOpen: (run: PipelineRun) => void; onRetry: (run: PipelineRun) => void; onCancel: (run: PipelineRun) => void; onViewPipeline: (run: PipelineRun) => void; onViewLogs: (run: PipelineRun) => void }) {
+function PipelineRunsTable({ runs, now, activeMenu, onMenuChange, onOpen: onOpenFallback, onRetry, onCancel, onViewPipeline, onViewLogs }: { runs: PipelineRun[]; now: number; activeMenu: string | null; onMenuChange: (id: string | null) => void; onOpen: (run: PipelineRun) => void; onRetry: (run: PipelineRun) => void; onCancel: (run: PipelineRun) => void; onViewPipeline: (run: PipelineRun) => void; onViewLogs: (run: PipelineRun) => void }) {
+    const router = useRouter();
+    const onOpen = (run: PipelineRun) => getPipelineRunDetail(run.id) ? router.push(`/pipeline-runs/${run.id}`) : onOpenFallback(run);
     const menuItems = (run: PipelineRun): MenuItem[] => {
         const items: MenuItem[] = [{ label: "View Run", onSelect: () => onOpen(run) }];
         if (run.status === "Failed" || run.status === "Cancelled") items.push({ label: "Retry", onSelect: () => onRetry(run) });
@@ -67,6 +70,7 @@ export function PipelineRunsPage() {
     const [supportingError, setSupportingError] = useState(false);
     const [summaryError, setSummaryError] = useState(false);
     const [retryError, setRetryError] = useState(false);
+    useEffect(() => { const params = new URLSearchParams(window.location.search); const requestedPipeline = params.get("pipeline"); const requestedStatus = params.get("status") as PipelineRunStatus | null; if (requestedPipeline && pipelines.some((pipeline) => pipeline.id === requestedPipeline)) setPipelineId(requestedPipeline); if (requestedStatus && ["Running", "Success", "Failed", "Cancelled"].includes(requestedStatus)) setStatus(requestedStatus); }, []);
     const selectedRange = timeRangeOptions.find((option) => option.value === timeRange) ?? timeRangeOptions[1];
     const rangeRuns = useMemo(() => runs.filter((run) => now - Date.parse(run.startedAt) <= selectedRange.minutes * 60_000), [runs, now, selectedRange.minutes]);
     const filteredRuns = useMemo(() => sortPipelineRuns(rangeRuns.filter((run) => { const term = query.trim().toLowerCase(); const matchesSearch = !term || run.pipelineName.toLowerCase().includes(term) || run.id.toLowerCase().includes(term) || run.platformCode.toLowerCase().includes(term) || run.vendorCode?.toLowerCase().includes(term); return matchesSearch && (status === "All" || run.status === status) && (pipelineId === "All" || run.pipelineId === pipelineId) && (trigger === "All" || run.trigger === trigger); })), [rangeRuns, query, status, pipelineId, trigger]);
