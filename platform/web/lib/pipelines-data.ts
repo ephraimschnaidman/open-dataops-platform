@@ -1,6 +1,6 @@
 import type { OperationalResult } from "@/lib/operational-status";
 
-export type PipelineStatus = "Healthy" | "Warning" | "Failed" | "Disabled";
+export type PipelineStatus = "Healthy" | "Warning" | "Failed" | "Running" | "Disabled";
 export type PipelineEnvironment = "Production" | "Staging" | "Development";
 export type PipelineScheduleMode = "Scheduled" | "Manual";
 
@@ -32,7 +32,7 @@ export const pipelines: Pipeline[] = [
     { id: "warehouse-sync", name: "Warehouse Sync", technicalId: "warehouse_sync", status: "Healthy", environment: "Production", source: { name: "Analytics Warehouse", technology: "Snowflake" }, destination: "Reporting Store", schedule: "Every 15 min", scheduleMode: "Scheduled", lastRun: "12 min ago", nextRun: "In 3 min", duration: "1m 08s" },
     { id: "legacy-reporting", name: "Legacy Reporting", technicalId: "legacy_reporting", status: "Disabled", environment: "Development", source: { name: "Legacy ERP", technology: "SQL Server" }, destination: "Reporting Archive", schedule: "Daily at 06:00", scheduleMode: "Scheduled", lastRun: "4 days ago", nextRun: "—", duration: "8m 42s" },
     { id: "manual-customer-export", name: "Manual Customer Export", technicalId: "manual_customer_export", status: "Healthy", environment: "Staging", source: { name: "Customer Warehouse", technology: "Snowflake" }, destination: "Secure Export Bucket", schedule: "Manual", scheduleMode: "Manual", lastRun: "Yesterday", nextRun: "Manual", duration: "4m 26s" },
-    { id: "customer-profile-merge", name: "Customer Profile Merge", technicalId: "customer_profile_merge", status: "Healthy", environment: "Production", source: { name: "Customer Lakehouse", technology: "Amazon S3" }, destination: "Identity Store", schedule: "Weekdays at 02:00", scheduleMode: "Scheduled", lastRun: "7 hr ago", nextRun: "Tomorrow at 02:00", duration: "Running · 3m 41s" },
+    { id: "customer-profile-merge", name: "Customer Profile Merge", technicalId: "customer_profile_merge", status: "Running", environment: "Production", source: { name: "Customer Lakehouse", technology: "Amazon S3" }, destination: "Identity Store", schedule: "Weekdays at 02:00", scheduleMode: "Scheduled", lastRun: "7 hr ago", nextRun: "Tomorrow at 02:00", duration: "Running · 3m 41s" },
     { id: "inventory-snapshot", name: "Inventory Snapshot", technicalId: "inventory_snapshot", status: "Healthy", environment: "Production", source: { name: "Orders Database", technology: "MySQL" }, destination: "Operations Warehouse", schedule: "Hourly", scheduleMode: "Scheduled", lastRun: "42 min ago", nextRun: "In 18 min", duration: "56s" },
     { id: "marketing-attribution", name: "Marketing Attribution", technicalId: "marketing_attribution", status: "Healthy", environment: "Staging", source: { name: "Campaign Events", technology: "Kafka" }, destination: "Analytics Warehouse", schedule: "Every 15 min", scheduleMode: "Scheduled", lastRun: "6 min ago", nextRun: "In 9 min", duration: "1m 47s" },
     { id: "orders-incremental", name: "Orders Incremental", technicalId: "orders_incremental", status: "Healthy", environment: "Production", source: { name: "Orders Database", technology: "MySQL" }, destination: "Production Warehouse", schedule: "Every 15 min", scheduleMode: "Scheduled", lastRun: "5 min ago", nextRun: "In 10 min", duration: "48s" },
@@ -40,7 +40,7 @@ export const pipelines: Pipeline[] = [
     { id: "raw-data-archive", name: "Raw Data Archive", technicalId: "raw_data_archive", status: "Healthy", environment: "Production", source: { name: "Raw Data Bucket", technology: "Amazon S3" }, destination: "Archive Bucket", schedule: "Daily at 06:00", scheduleMode: "Scheduled", lastRun: "Yesterday", nextRun: "Today at 18:00", duration: "6m 19s" },
 ];
 
-const statusOrder: Record<PipelineStatus, number> = { Failed: 0, Warning: 1, Healthy: 2, Disabled: 3 };
+const statusOrder: Record<PipelineStatus, number> = { Failed: 0, Warning: 1, Running: 2, Healthy: 3, Disabled: 4 };
 
 export function sortPipelines(items: Pipeline[]) {
     return [...items].sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || a.name.localeCompare(b.name));

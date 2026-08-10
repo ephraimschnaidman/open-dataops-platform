@@ -1,5 +1,5 @@
 import { dataSources, type DataSource } from "@/lib/data-sources-data";
-import type { OperationalResult, OperationalState } from "@/lib/operational-status";
+import type { OperationalResult } from "@/lib/operational-status";
 
 export interface ConfigurationField {
     label: string;
@@ -16,7 +16,7 @@ export interface ConnectedPipeline {
 }
 
 export interface ValidationSummary {
-    status: OperationalState;
+    status: "Success" | "Warning" | "Error";
     passed: number;
     warnings: number;
     failed: number;

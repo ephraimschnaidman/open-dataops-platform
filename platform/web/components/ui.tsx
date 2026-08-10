@@ -9,9 +9,9 @@ export function Breadcrumbs({ items }: { items: Array<{ label: string; href?: st
     return <nav aria-label="Breadcrumb" className="mb-4"><ol className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">{items.map((item, index) => <li key={item.label} className="flex items-center gap-1.5">{index > 0 && <span aria-hidden="true" className="text-zinc-300">/</span>}{item.href ? <Link href={item.href} className="hover:text-zinc-700">{item.label}</Link> : <span aria-current="page" className="font-medium text-zinc-600">{item.label}</span>}</li>)}</ol></nav>;
 }
 
-export function Button({ variant = "secondary", className = "", children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" }) {
-    const styles = variant === "primary" ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800" : variant === "ghost" ? "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900" : "border border-zinc-200 bg-white text-zinc-700 shadow-card hover:bg-zinc-50";
-    return <button className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition ${styles} ${className}`} {...props}>{children}</button>;
+export function Button({ variant = "secondary", className = "", children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {
+    const styles = variant === "primary" ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800" : variant === "danger" ? "bg-rose-600 text-white shadow-sm hover:bg-rose-700" : variant === "ghost" ? "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900" : "border border-zinc-200 bg-white text-zinc-700 shadow-card hover:bg-zinc-50";
+    return <button className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${styles} ${className}`} {...props}>{children}</button>;
 }
 
 export function SearchField({ value, onChange, placeholder, className = "" }: { value: string; onChange: (value: string) => void; placeholder: string; className?: string }) {
@@ -26,13 +26,18 @@ export function Card({ title, description, action, children, className = "" }: {
     return <div className={`rounded-lg border border-zinc-200 bg-white shadow-card ${className}`}>{(title || description || action) && <div className="flex items-start justify-between gap-4 border-b border-zinc-100 px-4 py-3.5"><div>{title && <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-zinc-900">{title}</h2>}{description && <p className="mt-0.5 text-xs text-zinc-500">{description}</p>}</div>{action}</div>}{children}</div>;
 }
 
-export function OperationalStatus({ result }: { result: OperationalResult }) {
-    const tone = result.status === "Success" ? { box: "border-emerald-100 bg-emerald-50/60", icon: "bg-emerald-100 text-emerald-700", action: "text-emerald-800" } : result.status === "Warning" ? { box: "border-amber-100 bg-amber-50/60", icon: "bg-amber-100 text-amber-700", action: "text-amber-800" } : { box: "border-rose-100 bg-rose-50/60", icon: "bg-rose-100 text-rose-700", action: "text-rose-800" };
-    return <div className={`rounded-lg border p-4 ${tone.box}`}><div className="flex items-start gap-3"><span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full ${tone.icon}`}>{result.status === "Success" ? <Check className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}</span><div className="min-w-0 flex-1"><p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Status</p><StatusBadge status={result.status} /><p className="mt-2 text-sm font-medium leading-5 text-zinc-900">{result.message}</p><dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2"><div><dt className="text-zinc-500">Platform Code</dt><dd className="mt-0.5 font-mono font-medium text-zinc-800">{result.platformCode}</dd></div>{result.vendorCode && <div><dt className="text-zinc-500">Vendor Code</dt><dd className="mt-0.5 font-mono font-medium text-zinc-800">{result.vendorCode}</dd></div>}</dl><div className="mt-3 border-t border-current/10 pt-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Recommended Action</p><p className={`mt-1 text-xs leading-5 ${tone.action}`}>{result.recommendedAction}</p></div></div></div></div>;
+export function OperationalStatus({ result, statusLabel, details, action }: { result: OperationalResult; statusLabel?: "Healthy" | "Warning" | "Failed" | "Running" | "Disabled"; details?: Array<{ label: string; value: string }>; action?: ReactNode }) {
+    const tone = result.status === "Success" ? { box: "border-emerald-100 bg-emerald-50/60", icon: "bg-emerald-100 text-emerald-700", action: "text-emerald-800" } : result.status === "Warning" ? { box: "border-amber-100 bg-amber-50/60", icon: "bg-amber-100 text-amber-700", action: "text-amber-800" } : result.status === "Running" ? { box: "border-blue-100 bg-blue-50/60", icon: "bg-blue-100 text-blue-700", action: "text-blue-800" } : result.status === "Neutral" ? { box: "border-zinc-200 bg-zinc-50", icon: "bg-zinc-200 text-zinc-600", action: "text-zinc-700" } : { box: "border-rose-100 bg-rose-50/60", icon: "bg-rose-100 text-rose-700", action: "text-rose-800" };
+    const badgeStatus = statusLabel ?? (result.status === "Neutral" ? "Disabled" : result.status);
+    return <div className={`rounded-lg border p-4 ${tone.box}`}><div className="flex items-start gap-3"><span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full ${tone.icon}`}>{result.status === "Success" ? <Check className="h-4 w-4" /> : result.status === "Running" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CircleAlert className="h-4 w-4" />}</span><div className="min-w-0 flex-1"><p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Status</p><StatusBadge status={badgeStatus} /><p className="mt-2 text-sm font-medium leading-5 text-zinc-900">{result.message}</p><dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2"><div><dt className="text-zinc-500">Platform Code</dt><dd className="mt-0.5 font-mono font-medium text-zinc-800">{result.platformCode}</dd></div>{result.vendorCode && <div><dt className="text-zinc-500">Vendor Code</dt><dd className="mt-0.5 font-mono font-medium text-zinc-800">{result.vendorCode}</dd></div>}</dl>{details && <dl className="mt-3 grid gap-x-4 gap-y-2 border-t border-current/10 pt-3 text-xs sm:grid-cols-2">{details.map((detail) => <div key={detail.label}><dt className="text-zinc-500">{detail.label}</dt><dd className="mt-0.5 font-medium text-zinc-800">{detail.value}</dd></div>)}</dl>}<div className="mt-3 border-t border-current/10 pt-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Recommended Action</p><p className={`mt-1 text-xs leading-5 ${tone.action}`}>{result.recommendedAction}</p>{action && <div className="mt-3 flex flex-wrap gap-2">{action}</div>}</div></div></div></div>;
 }
 
 export function TechnicalDetails({ items, className = "" }: { items: Array<{ label: string; value: string }>; className?: string }) {
     return <dl className={`grid gap-2 text-xs sm:grid-cols-2 ${className}`}>{items.map((item) => <div key={item.label}><dt className="text-zinc-500">{item.label}</dt><dd className="mt-0.5 font-mono font-medium text-zinc-800">{item.value}</dd></div>)}</dl>;
+}
+
+export function KeyValueGrid({ items }: { items: Array<{ label: string; value: string; mono?: boolean }> }) {
+    return <dl className="grid sm:grid-cols-2">{items.map((item) => <div key={item.label} className="border-b border-zinc-100 px-4 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0"><dt className="text-[11px] text-zinc-500">{item.label}</dt><dd className={`mt-1 truncate text-xs font-medium text-zinc-800 ${item.mono ? "font-mono" : ""}`} title={item.value}>{item.value}</dd></div>)}</dl>;
 }
 
 export function PageHeader({ title, description, eyebrow, action }: { title: string; description: string; eyebrow?: ReactNode; action?: ReactNode }) {
@@ -70,6 +75,7 @@ const badgeStyles = {
     Disconnected: "bg-rose-50 text-rose-700 ring-rose-600/20",
     Disabled: "bg-zinc-100 text-zinc-600 ring-zinc-500/20",
     Error: "bg-rose-50 text-rose-700 ring-rose-600/20",
+    Cancelled: "bg-zinc-100 text-zinc-600 ring-zinc-500/20",
 };
 
 export function StatusBadge({ status }: { status: keyof typeof badgeStyles }) {

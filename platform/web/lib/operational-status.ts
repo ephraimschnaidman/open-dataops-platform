@@ -1,4 +1,4 @@
-export type OperationalState = "Success" | "Warning" | "Error";
+export type OperationalState = "Success" | "Warning" | "Error" | "Running" | "Neutral";
 
 export interface OperationalResult {
     status: OperationalState;

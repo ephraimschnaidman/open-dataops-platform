@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { Activity, CheckCircle2, CircleAlert, Clock3, Database, GitBranch, MoreHorizontal, Pencil, PlugZap } from "lucide-react";
 import type { DataSourceDetail, SourceActivity } from "@/lib/data-source-detail-data";
-import { Breadcrumbs, Button, Card, EmptyState, OperationalStatus, PageHeader, Skeleton, StatusBadge } from "@/components/ui";
+import { Breadcrumbs, Button, Card, EmptyState, KeyValueGrid, OperationalStatus, PageHeader, Skeleton, StatusBadge } from "@/components/ui";
 
 function HealthCard({ source }: { source: DataSourceDetail }) {
     return <Card title="Operational Health" description="Latest connectivity result and recommended response."><div className="p-4"><dl className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-zinc-100 bg-zinc-50/60 p-3 text-xs sm:grid-cols-3"><div><dt className="text-zinc-500">Source Status</dt><dd className="mt-1"><StatusBadge status={source.status} /></dd></div><div><dt className="text-zinc-500">Last Checked</dt><dd className="mt-1 font-medium text-zinc-800">{source.health.lastChecked}</dd></div><div><dt className="text-zinc-500">Response Time</dt><dd className="mt-1 font-medium tabular-nums text-zinc-800">{source.health.latency}</dd></div></dl><OperationalStatus result={source.health} /></div></Card>;
 }
 
 function ConfigurationCard({ source }: { source: DataSourceDetail }) {
-    return <Card title="Configuration Summary" description="Connection settings with sensitive values hidden."><dl className="grid sm:grid-cols-2">{source.configuration.map((field) => <div key={field.label} className="border-b border-zinc-100 px-4 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0"><dt className="text-[11px] text-zinc-500">{field.label}</dt><dd className={`mt-1 truncate text-xs font-medium text-zinc-800 ${field.mono ? "font-mono" : ""}`} title={field.value}>{field.value}</dd></div>)}</dl></Card>;
+    return <Card title="Configuration Summary" description="Connection settings with sensitive values hidden."><KeyValueGrid items={source.configuration} /></Card>;
 }
 
 function ConnectedPipelines({ source }: { source: DataSourceDetail }) {
