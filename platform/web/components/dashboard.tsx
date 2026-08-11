@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Activity, ArrowRight, ChevronRight, CircleAlert, Database, GitBranch, MoreHorizontal, Network, ShieldCheck, X } from "lucide-react";
 import { activities, healthItems, issues, metrics, pipelineRuns, type Issue } from "@/lib/dashboard-data";
 import { EmptyState, ErrorState, MetricCard, Section, Skeleton, StatusBadge } from "@/components/ui";
@@ -40,7 +41,7 @@ export function Dashboard() {
         <Section title="Platform status" description="Operational summary for the last 24 hours"><MetricCards /></Section>
         <Section title="Needs attention" description="Issues with the highest operational impact" className="mt-7" action={<button className="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-900">View alerts <ChevronRight className="h-3.5 w-3.5" /></button>}><Issues onSelect={setSelectedIssue} /></Section>
         <Section title="Recent pipeline runs" description="Latest activity across production pipelines" className="mt-7" action={<button className="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-900">View all runs <ChevronRight className="h-3.5 w-3.5" /></button>}><PipelineTable /></Section>
-        <div className="mt-7 grid gap-7 xl:grid-cols-[1.35fr_0.85fr]"><Section title="Platform health" description="Key service-level indicators"><HealthOverview /></Section><Section title="Recent activity" description="Changes across your workspace"><ActivityFeed /></Section></div>
+        <div className="mt-7 grid gap-7 xl:grid-cols-[1.35fr_0.85fr]"><Section title="Platform health" description="Key service-level indicators" action={<Link href="/health-metrics?time=24h" className="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-900">View Health Metrics <ChevronRight className="h-3.5 w-3.5" /></Link>}><HealthOverview /></Section><Section title="Recent activity" description="Changes across your workspace"><ActivityFeed /></Section></div>
         <IssueDrawer issue={selectedIssue} onClose={() => setSelectedIssue(null)} />
     </div>;
 }
