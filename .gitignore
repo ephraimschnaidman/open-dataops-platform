@@ -36,7 +36,8 @@ platform/airflow/logs/
 # dbt
 target/
 dbt_packages/
-logs/
+/logs/
+platform/dbt/logs/
 platform/dbt/.user.yml
 
 # Runtime artifacts (preserve the committed directory structure)
