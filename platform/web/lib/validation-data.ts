@@ -1,0 +1,43 @@
+export type ValidationResult = "Passed" | "Failed" | "Not Evaluated";
+export type ValidationSeverity = "Warning" | "Blocking";
+export type ValidationEnvironment = "Production" | "Staging" | "Development";
+export type ValidationCheckType = "Not Null" | "Unique" | "Accepted Values" | "Range" | "Freshness" | "Row Count" | "Referential Integrity" | "Custom";
+
+export interface ValidationHistory { runId?: string; runLabel: string; result: ValidationResult; actual: string; evaluated: string; }
+export interface FailingRecord { [field: string]: string; }
+export interface ValidationCheck {
+    id: string; name: string; technicalId: string; result: ValidationResult; severity: ValidationSeverity;
+    operationalStatus?: "Error"; platformCode: string; ruleCode?: string; pipeline: string; pipelineId: string;
+    runId: string; runLabel: string; environment: ValidationEnvironment; source: string; sourceId: string;
+    dataset: string; column?: string; checkType: ValidationCheckType; actual: string; expected: string;
+    evaluated: string; evaluatedAt: string; message: string; recommendedAction?: string; affectedRecords?: number;
+    affectedPercentage?: string; pipelineEffect?: string; recordsEvaluated?: number; samples?: FailingRecord[];
+    history: ValidationHistory[];
+}
+
+const history = (runId: string, runLabel: string, actual: string): ValidationHistory[] => [
+    { runId, runLabel, result: "Failed", actual, evaluated: "32 min ago" },
+    { runLabel: `${runLabel}-1`, result: "Passed", actual: "1.4%", evaluated: "1 hr ago" },
+    { runLabel: `${runLabel}-2`, result: "Passed", actual: "1.6%", evaluated: "2 hr ago" },
+    { runLabel: `${runLabel}-3`, result: "Passed", actual: "1.2%", evaluated: "3 hr ago" },
+];
+
+export const WAREHOUSE_CUSTOMER_CHECK_ID = "warehouse-customer-check";
+
+export const validationChecks: ValidationCheck[] = [
+    { id: "customer-email-null-rate", name: "Customer email null rate", technicalId: "customer_email_null_rate", result: "Failed", severity: "Warning", platformCode: "VALIDATION_CHECK_FAILED", ruleCode: "CHECK_NULL_RATE_THRESHOLD", pipeline: "Customer Ingestion", pipelineId: "customer-ingestion", runId: "run_01J92CING8", runLabel: "#8F42B7", environment: "Production", source: "Production Warehouse", sourceId: "analytics-warehouse", dataset: "customers", column: "customer_email", checkType: "Not Null", actual: "3.7% null", expected: "< 2% null", evaluated: "32 min ago", evaluatedAt: "8:10 PM", message: "The percentage of null values in customer_email exceeded the configured threshold.", recommendedAction: "Review affected records and confirm whether the validation threshold or source data requires correction.", affectedRecords: 4621, affectedPercentage: "3.7%", samples: [{ customer_id: "C-10821", customer_email: "null" }, { customer_id: "C-10902", customer_email: "null" }, { customer_id: "C-11041", customer_email: "null" }, { customer_id: "C-11088", customer_email: "[REDACTED]" }], history: history("run_01J92CING8", "#8F42B7", "3.7%") },
+    { id: "order-id-unique", name: "Order ID unique", technicalId: "order_id_unique", result: "Failed", severity: "Blocking", platformCode: "VALIDATION_CHECK_FAILED", ruleCode: "CHECK_UNIQUENESS_VIOLATION", pipeline: "Billing Reconciliation", pipelineId: "billing-reconciliation", runId: "run_01J97BIL02", runLabel: "#97BIL02", environment: "Production", source: "Billing PostgreSQL", sourceId: "billing-postgres", dataset: "orders", column: "order_id", checkType: "Unique", actual: "318 duplicates", expected: "0 duplicates", evaluated: "18 min ago", evaluatedAt: "8:24 PM", message: "318 duplicate order_id values were detected.", recommendedAction: "Review duplicate records before retrying the pipeline.", affectedRecords: 318, affectedPercentage: "0.3%", pipelineEffect: "Execution stopped during Validate stage.", samples: [{ order_id: "ORD-22814", duplicate_count: "2" }, { order_id: "ORD-23109", duplicate_count: "3" }], history: history("run_01J97BIL02", "#97BIL02", "318 duplicates") },
+    { id: "account-data-freshness", name: "Account data freshness", technicalId: "account_data_freshness", result: "Failed", severity: "Warning", platformCode: "VALIDATION_CHECK_FAILED", ruleCode: "CHECK_FRESHNESS_THRESHOLD", pipeline: "Warehouse Sync", pipelineId: "warehouse-sync", runId: "run_01J98WAR03", runLabel: "#8F421A", environment: "Production", source: "Analytics Warehouse", sourceId: "analytics-warehouse", dataset: "accounts", checkType: "Freshness", actual: "3h 14m", expected: "< 2h", evaluated: "1 hr ago", evaluatedAt: "7:42 PM", message: "Account data is older than the configured freshness threshold.", recommendedAction: "Confirm the upstream account feed completed successfully.", history: history("run_01J98WAR03", "#8F421A", "3h 14m") },
+    { id: "customer-id-not-null", name: "Customer ID not null", technicalId: "customer_id_not_null", result: "Passed", severity: "Blocking", platformCode: "VALIDATION_CHECK_PASSED", ruleCode: "DBT_TEST_PASSED", pipeline: "Customer Ingestion", pipelineId: "customer-ingestion", runId: "run_01J92CING8", runLabel: "#8F42B7", environment: "Production", source: "Production Warehouse", sourceId: "analytics-warehouse", dataset: "customers", column: "customer_id", checkType: "Not Null", actual: "0 nulls", expected: "0 nulls", evaluated: "8 min ago", evaluatedAt: "8:34 PM", message: "No null values were detected in customer_id.", recordsEvaluated: 124892, history: history("run_01J92CING8", "#8F42B7", "0 nulls").map((item) => ({ ...item, result: "Passed", actual: "0 nulls" })) },
+    { id: "payment-status-accepted-values", name: "Payment status accepted values", technicalId: "payment_status_accepted_values", result: "Passed", severity: "Warning", platformCode: "VALIDATION_CHECK_PASSED", pipeline: "Billing Reconciliation", pipelineId: "billing-reconciliation", runId: "run_01J97BIL02", runLabel: "#97BIL02", environment: "Production", source: "Billing PostgreSQL", sourceId: "billing-postgres", dataset: "payments", column: "payment_status", checkType: "Accepted Values", actual: "0 invalid", expected: "0 invalid", evaluated: "18 min ago", evaluatedAt: "8:24 PM", message: "All payment_status values matched the accepted set.", recordsEvaluated: 118204, history: history("run_01J97BIL02", "#97BIL02", "0 invalid").map((item) => ({ ...item, result: "Passed", actual: "0 invalid" })) },
+    { id: "daily-orders-row-count", name: "Daily orders row count", technicalId: "daily_orders_row_count", result: "Passed", severity: "Warning", platformCode: "VALIDATION_CHECK_PASSED", pipeline: "Orders Incremental", pipelineId: "orders-incremental", runId: "run_01J96ORD57", runLabel: "#8F4277", environment: "Production", source: "Orders Database", sourceId: "orders-mysql", dataset: "orders", checkType: "Row Count", actual: "124,892", expected: "100,000–150,000", evaluated: "44 min ago", evaluatedAt: "7:58 PM", message: "The row count is within the configured range.", recordsEvaluated: 124892, history: history("run_01J96ORD57", "#8F4277", "124,892").map((item) => ({ ...item, result: "Passed" })) },
+    { id: WAREHOUSE_CUSTOMER_CHECK_ID, name: "Warehouse customer check", technicalId: "warehouse_customer_check", result: "Not Evaluated", severity: "Blocking", operationalStatus: "Error", platformCode: "VALIDATION_EXECUTION_FAILED", ruleCode: "SQLSTATE 08006", pipeline: "Warehouse Sync", pipelineId: "warehouse-sync", runId: "run_01J98WAR03", runLabel: "#8F4200", environment: "Development", source: "Analytics Warehouse", sourceId: "analytics-warehouse", dataset: "customers", column: "customer_id", checkType: "Custom", actual: "Unavailable — check not evaluated", expected: "0 nulls", evaluated: "2 hr ago", evaluatedAt: "6:42 PM", message: "Validation query could not execute because the source connection failed.", recommendedAction: "Resolve the source connection problem and rerun validation.", history: [{ runId: "run_01J98WAR03", runLabel: "#8F4200", result: "Not Evaluated", actual: "Unavailable — check not evaluated", evaluated: "2 hr ago" }] },
+];
+
+export const validationActivities = [
+    { time: "8:10 PM", checkId: "customer-email-null-rate", text: "Customer email null rate failed", code: "VALIDATION_CHECK_FAILED", tone: "warning" },
+    { time: "7:58 PM", checkId: "order-id-unique", text: "Order ID uniqueness passed", code: "VALIDATION_CHECK_PASSED", tone: "success" },
+    { time: "7:42 PM", checkId: "account-data-freshness", text: "Account freshness exceeded threshold", code: "VALIDATION_CHECK_FAILED", tone: "warning" },
+] as const;
+
+export function getValidationCheck(id: string) { return validationChecks.find((check) => check.id === id); }

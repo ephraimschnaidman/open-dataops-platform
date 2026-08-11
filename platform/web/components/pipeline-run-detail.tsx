@@ -50,7 +50,7 @@ export function PipelineRunDetailPage({ initialRun }: { initialRun: PipelineRunD
     const [retryShouldFail, setRetryShouldFail] = useState(initialRun.id === "run_01J94EVT18");
     const [pageError, setPageError] = useState(false);
     const [sectionErrors, setSectionErrors] = useState<Record<SectionKey, boolean>>({ stages: false, validation: false, "related runs": false, "event timeline": false });
-    const placeholder = (message: string) => setToast({ message, tone: "neutral" });
+    const placeholder = (message: string) => message.includes("Validation") ? router.push(`/validation?${new URLSearchParams({ pipeline: run.pipelineId, run: run.id, ...(run.platformCode === "VALIDATION_CHECK_FAILED" ? { result: "Failed" } : {}) }).toString()}`) : setToast({ message, tone: "neutral" });
     const viewPipeline = () => router.push(`/pipelines/${run.pipelineId}`);
     const viewLogs = () => { const failedStage = run.stages.find((item) => item.state === "Failed")?.name; const query = new URLSearchParams({ scope: "run", pipeline: run.pipelineId, run: run.id, environment: run.environment, ...(failedStage ? { stage: failedStage } : {}), ...(run.status === "Failed" ? { levels: "Error,Warning" } : {}), ...(run.status === "Running" ? { auto: "5" } : {}), start: logDateTime(run.startedAt), end: logDateTime(run.finishedAt ?? new Date().toISOString()), time: "custom" }); router.push(`/logs?${query.toString()}`); };
     const menuItems: MenuItem[] = [{ label: "View Pipeline", onSelect: viewPipeline }];

@@ -14,6 +14,11 @@ const qaOptions = ["mixed", "error-only", "pipeline-scoped", "run-scoped", "stag
 type QaState = typeof qaOptions[number];
 const qaLabels: Partial<Record<QaState, string>> = { stale: "delayed ingestion", gap: "collection gap" };
 
+function canonicalRunId(value: string) {
+    const normalized = value.replace(/^#/, "").toLowerCase();
+    return logEvents.find((event) => event.runId === value || event.runLabel?.toLowerCase() === normalized)?.runId ?? value;
+}
+
 function LogLevelBadge({ level }: { level: LogLevel }) {
     const styles = level === "Error" ? "bg-rose-50 text-rose-700 ring-rose-600/20" : level === "Warning" ? "bg-amber-50 text-amber-700 ring-amber-600/20" : level === "Debug" ? "bg-zinc-100 text-zinc-500 ring-zinc-500/20" : "bg-sky-50 text-sky-700 ring-sky-600/20";
     return <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset ${styles}`}>{level}</span>;
@@ -63,7 +68,7 @@ function ExpandableLogRow({ event, expanded, raw, detailFailed, onToggle, onRawC
             <div className="relative z-10 pointer-events-auto max-lg:hidden"><CodeCell event={event} onCopied={onCopied} /></div>
             <span className={passiveCell}>{expanded ? <ChevronDown className="h-4 w-4 text-zinc-400" /> : <ChevronRight className="h-4 w-4 text-zinc-400" />}</span>
         </div>
-        {expanded && <div id={detailsId}><EventDetails event={event} raw={raw} detailError={detailFailed} onRetry={onDetailRetry} onRawChange={onRawChange} onCopied={onCopied} /></div>}
+        {expanded && <div id={detailsId}><EventDetails event={event} raw={raw} detailError={detailFailed} onRetry={onDetailRetry} onRawChange={onRawChange} onCopied={onCopied} />{event.platformCode?.startsWith("VALIDATION_") && <div className="border-t border-zinc-200 bg-zinc-50 px-5 pb-4"><Link className="text-xs font-medium text-indigo-600 hover:text-indigo-700" href={`/validation?${new URLSearchParams({ ...(event.pipelineId ? { pipeline: event.pipelineId } : {}), ...(event.runId ? { run: event.runId } : {}), ...(event.platformCode === "VALIDATION_CHECK_FAILED" ? { result: "Failed" } : {}) }).toString()}`}>View Validation</Link></div>}</div>}
     </div>;
 }
 
@@ -75,7 +80,8 @@ export function LogsPage() {
     const [selectedLevels, setSelectedLevels] = useState<LogLevel[]>(initialLevels.length ? initialLevels : defaultLevels);
     const [environment, setEnvironment] = useState(params.get("environment") ?? "All");
     const [pipeline, setPipeline] = useState(params.get("pipeline") ?? "All");
-    const [runId, setRunId] = useState(params.get("run") ?? "");
+    const [runId, setRunIdState] = useState(canonicalRunId(params.get("run") ?? ""));
+    const setRunId = (value: string) => setRunIdState(canonicalRunId(value));
     const [stage, setStage] = useState(params.get("stage") ?? "All");
     const [source, setSource] = useState(params.get("source") ?? "All");
     const [code, setCode] = useState(params.get("code") ?? "All");
@@ -124,7 +130,7 @@ export function LogsPage() {
     const emptyDescription = qa === "no-logs" ? "Technical events will appear here after pipelines run and platform resources generate activity." : qa === "no-errors" || (selectedLevels.length === 1 && selectedLevels[0] === "Error") ? "No error-level events were recorded for this scope and time range." : "Try changing the time range, search, or filters.";
     const clearFilters = () => { setQuery(""); setSelectedLevels(defaultLevels); setEnvironment("All"); setCode("All"); setUrl({ q: null, levels: null, environment: null, code: null }); };
     const clearScope = () => { setScope("all"); setPipeline("All"); setRunId(""); setStage("All"); setSource("All"); setUrl({ scope: null, pipeline: null, run: null, stage: null, source: null, alert: null, start: null, end: null }); };
-    const selectQa = (value: string) => { const presets: Record<string, Record<string, string | null>> = { "pipeline-scoped": { scope: "pipeline", pipeline: "customer-ingestion" }, "run-scoped": { scope: "run", pipeline: "customer-ingestion", run: "8F42A1" }, "stage-scoped": { scope: "run", pipeline: "customer-ingestion", run: "8F42A1", stage: "Extract" }, "source-scoped": { scope: "source", source: "billing-postgres" }, "validation-scoped": { scope: "validation", pipeline: "billing-reconciliation", run: "97BIL02", stage: "Validate", code: "VALIDATION_CHECK_FAILED" } }; setUrl({ qa: value === "mixed" ? null : value, ...(presets[value] ?? {}) }); window.location.search = (() => { const next = new URLSearchParams(params.toString()); next.set("qa", value); Object.entries(presets[value] ?? {}).forEach(([k, v]) => v && next.set(k, v)); return next.toString(); })(); };
+    const selectQa = (value: string) => { const presets: Record<string, Record<string, string | null>> = { "pipeline-scoped": { scope: "pipeline", pipeline: "customer-ingestion" }, "run-scoped": { scope: "run", pipeline: "customer-ingestion", run: "run_01J92CING8" }, "stage-scoped": { scope: "run", pipeline: "customer-ingestion", run: "run_01J92CING8", stage: "Extract" }, "source-scoped": { scope: "source", source: "billing-postgres" }, "validation-scoped": { scope: "validation", pipeline: "billing-reconciliation", run: "run_01J97BIL02", stage: "Validate", code: "VALIDATION_CHECK_FAILED" } }; setUrl({ qa: value === "mixed" ? null : value, ...(presets[value] ?? {}) }); window.location.search = (() => { const next = new URLSearchParams(params.toString()); next.set("qa", value); Object.entries(presets[value] ?? {}).forEach(([k, v]) => v && next.set(k, v)); return next.toString(); })(); };
 
     const scopeFilter = <label className="flex flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400">LOG SCOPE</span><FilterSelect label="Log Scope" value={scope} onChange={(value) => { setScope(value as LogScope); setUrl({ scope: value === "all" ? null : value }); }} options={[{ label: "All", value: "all" }, { label: "Pipeline", value: "pipeline" }, { label: "Pipeline Run", value: "run" }, { label: "Data Source", value: "source" }, { label: "Validation", value: "validation" }, { label: "Platform", value: "platform" }]} /></label>;
     const environmentFilter = <label className="flex flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400">ENVIRONMENT</span><FilterSelect label="Environment" value={environment} onChange={(value) => { setEnvironment(value); setUrl({ environment: value === "All" ? null : value }); }} options={["All", "Production", "Staging", "Development"].map((value) => ({ label: value, value }))} /></label>;

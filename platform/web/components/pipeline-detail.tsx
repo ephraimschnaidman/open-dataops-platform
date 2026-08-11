@@ -69,7 +69,7 @@ export function PipelineDetailPage({ pipeline }: { pipeline: PipelineDetail }) {
     const [runError, setRunError] = useState(false);
     const [pageError, setPageError] = useState(false);
     const [sectionErrors, setSectionErrors] = useState<Record<SectionKey, boolean>>({ runs: false, validation: false, monitoring: false, activity: false });
-    const placeholder = (message: string) => setToast({ message, tone: "neutral" });
+    const placeholder = (message: string) => message.includes("Validation") ? router.push(`/validation?${new URLSearchParams({ pipeline: pipeline.id }).toString()}`) : setToast({ message, tone: "neutral" });
     const reenabled = pipeline.status === "Disabled" && !disabled;
     const status = disabled ? "Disabled" : reenabled ? "Healthy" : pipeline.status;
     const healthActions = status === "Failed" ? <><Button onClick={() => placeholder("Pipeline Run Detail is not available in this phase.")}>View Failed Run</Button><Button variant="primary" onClick={() => setDialog("run")}>Run Again</Button></> : status === "Warning" ? <Button onClick={() => placeholder("Validation is not available in this phase.")}>Review Validation</Button> : status === "Running" ? <Button onClick={() => placeholder("Pipeline Run Detail is not available in this phase.")}>View Run</Button> : status === "Healthy" ? <Button onClick={() => placeholder("Pipeline Run Detail is not available in this phase.")}>View Latest Run</Button> : null;

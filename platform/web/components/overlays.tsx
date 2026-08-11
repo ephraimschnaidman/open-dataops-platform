@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, Info, X } from "lucide-react";
 import { Button } from "@/components/ui";
 
@@ -11,10 +11,13 @@ export interface MenuItem {
     tone?: "default" | "danger";
 }
 
-export function DropdownMenu({ open, onOpenChange, items, children, align = "right" }: { open: boolean; onOpenChange: (open: boolean) => void; items: MenuItem[]; children: ReactNode; align?: "left" | "right" }) {
+export function DropdownMenu({ open: controlledOpen, onOpenChange, items, children, align = "right" }: { open?: boolean; onOpenChange?: (open: boolean) => void; items: MenuItem[]; children: ReactNode; align?: "left" | "right" }) {
+    const [internalOpen, setInternalOpen] = useState(false);
+    const open = controlledOpen ?? internalOpen;
+    const changeOpen = onOpenChange ?? setInternalOpen;
     const ref = useRef<HTMLDivElement>(null);
-    useEffect(() => { if (!open) return; const close = (event: MouseEvent) => { if (!ref.current?.contains(event.target as Node)) onOpenChange(false); }; const key = (event: KeyboardEvent) => { if (event.key === "Escape") onOpenChange(false); }; document.addEventListener("mousedown", close); document.addEventListener("keydown", key); return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", key); }; }, [open, onOpenChange]);
-    return <div ref={ref} className="relative inline-flex">{children}{open && <div className={`animate-enter absolute top-8 z-30 w-44 rounded-lg border border-zinc-200 bg-white p-1.5 text-xs shadow-panel ${align === "right" ? "right-0" : "left-0"}`}>{items.map((item) => <button key={item.label} disabled={item.disabled} onClick={() => { item.onSelect(); onOpenChange(false); }} className={`flex w-full rounded-md px-2.5 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${item.tone === "danger" ? "text-rose-700 hover:bg-rose-50" : "text-zinc-700 hover:bg-zinc-50"}`}>{item.label}</button>)}</div>}</div>;
+    useEffect(() => { if (!open) return; const close = (event: MouseEvent) => { if (!ref.current?.contains(event.target as Node)) changeOpen(false); }; const key = (event: KeyboardEvent) => { if (event.key === "Escape") changeOpen(false); }; document.addEventListener("mousedown", close); document.addEventListener("keydown", key); return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", key); }; }, [open, changeOpen]);
+    return <div ref={ref} className="relative inline-flex" onClick={() => { if (!open) changeOpen(true); }}>{children}{open && <div className={`animate-enter absolute top-8 z-30 w-44 rounded-lg border border-zinc-200 bg-white p-1.5 text-xs shadow-panel ${align === "right" ? "right-0" : "left-0"}`}>{items.map((item) => <button key={item.label} disabled={item.disabled} onClick={() => { item.onSelect(); changeOpen(false); }} className={`flex w-full rounded-md px-2.5 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${item.tone === "danger" ? "text-rose-700 hover:bg-rose-50" : "text-zinc-700 hover:bg-zinc-50"}`}>{item.label}</button>)}</div>}</div>;
 }
 
 export function ConfirmationDialog({ open, title, description, confirmLabel, cancelLabel = "Cancel", onCancel, onConfirm, confirmVariant = "primary", supportingText, details }: { open: boolean; title: string; description: string; confirmLabel: string; cancelLabel?: string; onCancel: () => void; onConfirm: () => void; confirmVariant?: "primary" | "danger"; supportingText?: string; details?: Array<{ label: string; value: string }> }) {

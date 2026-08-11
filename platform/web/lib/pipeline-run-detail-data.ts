@@ -86,6 +86,12 @@ export const pipelineRunDetails: PipelineRunDetail[] = [
         ],
     },
     {
+        id: "run_01J96ORD57", pipelineId: "orders-incremental", pipelineName: "Orders Incremental", environment: "Production", status: "Success", trigger: "Retry", startedAt: "2026-08-10T12:33:00.000Z", finishedAt: "2026-08-10T12:34:52.000Z", duration: "1m 52s", records: 96412, platformCode: "RUN_COMPLETED", message: "The retry execution completed successfully and all order records were loaded.", recommendedAction: "No corrective action is required.",
+        stages: [{ name: "Extract", state: "Completed", duration: "31s", recordDetail: "96,508 records read" }, { name: "Transform", state: "Completed", duration: "42s", recordDetail: "96,412 records produced" }, { name: "Validate", state: "Completed", duration: "14s", recordDetail: "12 checks passed" }, { name: "Load", state: "Completed", duration: "25s", recordDetail: "96,412 records written" }],
+        validation: { checks: 12, passing: 12, failed: 0, evaluatedAt: "2026-08-10T12:34:27.000Z" }, relatedRuns: related("run_01J96ORD57", "Retry"),
+        events: [{ id: "o1", timestamp: "2026-08-10T12:33:00.000Z", title: "Retry started", code: "RUN_STARTED", tone: "neutral" }, { id: "o2", timestamp: "2026-08-10T12:34:27.000Z", title: "Validation completed", code: "STAGE_COMPLETED", tone: "success" }, { id: "o3", timestamp: "2026-08-10T12:34:52.000Z", title: "Run completed", code: "RUN_COMPLETED", tone: "success" }],
+    },
+    {
         id: "run_01J94EVT18", pipelineId: "events-processing", pipelineName: "Events Processing", environment: "Production", status: "Failed", trigger: "Event", startedAt: "2026-08-10T13:02:00.000Z", finishedAt: "2026-08-10T13:02:34.000Z", duration: "34s", platformCode: "PIPELINE_EXECUTION_FAILED", vendorCode: "SASL_AUTHENTICATION_FAILED", message: "Authentication to the event broker failed during extraction.", recommendedAction: "Verify broker credentials, inspect the execution logs, and retry the run.",
         stages: [{ name: "Extract", state: "Failed", duration: "34s", platformCode: "PIPELINE_EXECUTION_FAILED", vendorCode: "SASL_AUTHENTICATION_FAILED", message: "The broker rejected the configured credentials." }, { name: "Transform", state: "Pending" }, { name: "Validate", state: "Pending" }, { name: "Load", state: "Pending" }],
         validation: { checks: 0, passing: 0, failed: 0 }, relatedRuns: related("run_01J94EVT18", "Event"),
