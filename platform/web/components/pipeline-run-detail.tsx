@@ -34,7 +34,12 @@ import {
     TechnicalDetails,
 } from "@/components/ui";
 
-function logDateTime(value: string) {
+const RUN_LOG_END_BUFFER_MINUTES = 1;
+
+function logDateTime(value: string, minuteOffset = 0) {
+    const date = new Date(value);
+    date.setMinutes(date.getMinutes() + minuteOffset);
+
     return new Intl.DateTimeFormat("sv-SE", {
         year: "numeric",
         month: "2-digit",
@@ -44,7 +49,7 @@ function logDateTime(value: string) {
         hour12: false,
         timeZone: "America/New_York",
     })
-        .format(new Date(value))
+        .format(date)
         .replace(" ", "T");
 }
 import {
@@ -521,7 +526,10 @@ export function PipelineRunDetailPage({
             ...(run.status === "Failed" ? { levels: "Error,Warning" } : {}),
             ...(run.status === "Running" ? { auto: "5" } : {}),
             start: logDateTime(run.startedAt),
-            end: logDateTime(run.finishedAt ?? new Date().toISOString()),
+            end: logDateTime(
+                run.finishedAt ?? new Date().toISOString(),
+                RUN_LOG_END_BUFFER_MINUTES,
+            ),
             time: "custom",
         });
         router.push(`/logs?${query.toString()}`);
