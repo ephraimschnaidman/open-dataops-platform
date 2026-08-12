@@ -1,7 +1,7 @@
 import { AlertTriangle, Check, CircleAlert, LoaderCircle, RotateCw, Search, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ComponentPropsWithRef, ReactNode } from "react";
 import type { OperationalResult } from "@/lib/operational-status";
 export type { OperationalResult, OperationalState } from "@/lib/operational-status";
 
@@ -9,7 +9,7 @@ export function Breadcrumbs({ items }: { items: Array<{ label: string; href?: st
     return <nav aria-label="Breadcrumb" className="mb-4"><ol className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">{items.map((item, index) => <li key={item.label} className="flex items-center gap-1.5">{index > 0 && <span aria-hidden="true" className="text-zinc-300">/</span>}{item.href ? <Link href={item.href} className="hover:text-zinc-700">{item.label}</Link> : <span aria-current="page" className="font-medium text-zinc-600">{item.label}</span>}</li>)}</ol></nav>;
 }
 
-export function Button({ variant = "secondary", className = "", children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {
+export function Button({ variant = "secondary", className = "", children, ...props }: ComponentPropsWithRef<"button"> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {
     const styles = variant === "primary" ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800" : variant === "danger" ? "bg-rose-600 text-white shadow-sm hover:bg-rose-700" : variant === "ghost" ? "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900" : "border border-zinc-200 bg-white text-zinc-700 shadow-card hover:bg-zinc-50";
     return <button className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${styles} ${className}`} {...props}>{children}</button>;
 }
@@ -19,7 +19,7 @@ export function SearchField({ value, onChange, placeholder, className = "" }: { 
 }
 
 export function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ label: string; value: string }> }) {
-    return <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="h-9 rounded-md border border-zinc-200 bg-white px-2.5 text-xs text-zinc-600 shadow-card outline-none hover:border-zinc-300">{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
+    return <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="h-9 max-w-full rounded-md border border-zinc-200 bg-white px-2.5 text-xs text-zinc-600 shadow-card outline-none hover:border-zinc-300">{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
 }
 
 export function Card({ title, description, action, children, className = "" }: { title?: string; description?: string; action?: ReactNode; children: ReactNode; className?: string }) {
@@ -41,7 +41,7 @@ export function KeyValueGrid({ items }: { items: Array<{ label: string; value: s
 }
 
 export function PageHeader({ title, description, eyebrow, action }: { title: string; description: string; eyebrow?: ReactNode; action?: ReactNode }) {
-    return <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end"><div>{eyebrow && <div className="mb-1.5 flex items-center gap-2 text-[11px] font-medium text-zinc-400">{eyebrow}</div>}<h1 className="text-2xl font-semibold tracking-[-0.035em] text-zinc-950">{title}</h1><p className="mt-1 text-sm text-zinc-500">{description}</p></div>{action}</div>;
+    return <div className="mb-7 flex min-w-0 flex-col items-start justify-between gap-4 sm:flex-row sm:items-end"><div className="min-w-0 max-w-full">{eyebrow && <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[11px] font-medium text-zinc-400">{eyebrow}</div>}<h1 className="break-words text-2xl font-semibold tracking-[-0.035em] text-zinc-950">{title}</h1><p className="mt-1 break-words text-sm text-zinc-500">{description}</p></div>{action && <div className="max-w-full">{action}</div>}</div>;
 }
 
 export function MetricCard({ label, value, detail, icon: Icon, tone = "neutral" }: { label: string; value: string; detail: string; icon: LucideIcon; tone?: "neutral" | "positive" | "warning" | "danger" }) {
