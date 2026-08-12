@@ -14,11 +14,11 @@ interface NavGroup {
 const navGroups: NavGroup[] = [
     { label: "", items: [{ name: "Dashboard", icon: LayoutDashboard, href: "/" }] },
     { label: "Build", items: [{ name: "Data Sources", icon: Database, href: "/data-sources" }, { name: "Pipelines", icon: GitBranch, href: "/pipelines" }, { name: "Metadata", icon: Boxes }] },
-    { label: "Operate", items: [{ name: "Pipeline Runs", icon: Activity, href: "/pipeline-runs" }, { name: "Monitoring", icon: MonitorDot, href: "/monitoring" }, { name: "Alerts", icon: ShieldAlert, href: "/alerts", count: 5 }, { name: "Logs", icon: FileText, href: "/logs" }] },
+    { label: "Operate", items: [{ name: "Pipeline Runs", icon: Activity, href: "/pipeline-runs" }, { name: "Monitoring", icon: MonitorDot, href: "/monitoring" }, { name: "Alerts", icon: ShieldAlert, href: "/alerts", count: 4 }, { name: "Logs", icon: FileText, href: "/logs" }] },
     { label: "Platform", items: [{ name: "Validation", icon: FileCheck2, href: "/validation" }, { name: "Health Metrics", icon: HeartPulse, href: "/health-metrics" }, { name: "Settings", icon: Settings, href: "/settings" }] },
 ];
 
-const searchItems = ["customer_daily_sync", "orders_raw", "payments_validation", "daily_finance_rollup", "billing_postgres"];
+const searchItems = ["Customer Ingestion", "Events Processing", "Billing Reconciliation", "Risk Reporting", "Billing PostgreSQL"];
 const newItems = [
     { icon: Database, label: "Data source" },
     { icon: GitBranch, label: "Pipeline" },

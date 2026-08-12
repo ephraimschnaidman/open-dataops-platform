@@ -1,5 +1,6 @@
 import { dataSources, type DataSource } from "@/lib/data-sources-data";
 import type { OperationalResult } from "@/lib/operational-status";
+import { pipelines } from "@/lib/pipelines-data";
 
 export interface ConfigurationField {
     label: string;
@@ -44,10 +45,10 @@ export interface DataSourceDetail extends DataSource {
 }
 
 const healthByStatus: Record<DataSource["status"], OperationalResult & { lastChecked: string; latency: string }> = {
-    Healthy: { status: "Success", platformCode: "CONN_OK", vendorCode: "00000", message: "Connection established and responding normally.", recommendedAction: "No action required. Continue monitoring on the configured schedule.", lastChecked: "2 min ago", latency: "42 ms" },
-    Warning: { status: "Warning", platformCode: "CONN_LATENCY_HIGH", vendorCode: "390100", message: "Connection succeeded, but response latency is above the expected threshold.", recommendedAction: "Review warehouse load and network routing, then test the connection again.", lastChecked: "18 min ago", latency: "1.4 s" },
-    Disconnected: { status: "Error", platformCode: "CONN_AUTH_FAILED", vendorCode: "SASL_AUTHENTICATION_FAILED", message: "The platform could not authenticate with the source.", recommendedAction: "Verify the configured credentials and source access policy before retrying.", lastChecked: "1 hr ago", latency: "—" },
-    Disabled: { status: "Warning", platformCode: "MONITORING_DISABLED", message: "Connection checks are disabled for this source.", recommendedAction: "Enable the source when it should resume providing data to pipelines.", lastChecked: "Yesterday", latency: "—" },
+    Healthy: { status: "Success", platformCode: "SOURCE_CONNECTION_HEALTHY", message: "Connection established and responding normally.", recommendedAction: "No action required. Continue monitoring on the configured schedule.", lastChecked: "2 min ago", latency: "84 ms" },
+    Warning: { status: "Warning", platformCode: "SOURCE_LATENCY_ELEVATED", message: "Connection succeeded, but response latency is above the expected threshold.", recommendedAction: "Review database load and network routing, then test the connection again.", lastChecked: "5 min ago", latency: "418 ms" },
+    Disconnected: { status: "Error", platformCode: "SOURCE_AUTHENTICATION_FAILED", vendorCode: "SASL_AUTHENTICATION_FAILED", message: "The platform could not authenticate with the source.", recommendedAction: "Review the Events Kafka authentication/connection configuration before retrying the failed execution.", lastChecked: "2 min ago", latency: "—" },
+    Disabled: { status: "Warning", platformCode: "SOURCE_MONITORING_DISABLED", message: "Connection checks are disabled for this source.", recommendedAction: "Enable the source when it should resume providing data to pipelines.", lastChecked: "Yesterday", latency: "—" },
 };
 
 function configurationFor(source: DataSource): ConfigurationField[] {
@@ -59,16 +60,13 @@ function configurationFor(source: DataSource): ConfigurationField[] {
 }
 
 function pipelinesFor(source: DataSource): ConnectedPipeline[] {
-    if (!source.pipelines) return [];
-    const names: Record<string, string[]> = {
-        "billing-postgres": ["daily_finance_rollup", "billing_incremental", "revenue_reconciliation"],
-        "analytics-warehouse": ["customer_metrics_daily", "executive_reporting", "product_usage_hourly"],
-        "orders-mysql": ["orders_incremental", "fulfillment_snapshot", "customer_orders_daily"],
-        "events-kafka": ["product_events_hourly", "session_enrichment", "event_archive"],
-        "raw-data-s3": ["raw_ingestion_daily", "partner_file_import", "archive_compaction"],
-    };
-    const configuredNames = names[source.id] ?? [`${source.name}_sync`];
-    return Array.from({ length: source.pipelines }, (_, index) => ({ id: `pipeline-${source.id}-${index + 1}`, name: configuredNames[index] ?? `${source.name}_consumer_${index + 1}`, status: source.status === "Disconnected" && index === 0 ? "Failed" : index === 1 ? "Running" : "Success", schedule: index === 1 ? "Every hour" : "Daily at 06:00", lastRun: index === 0 ? "8 min ago" : index === 1 ? "Running now" : "3 hrs ago" }));
+    return pipelines.filter((pipeline) => pipeline.source.name === source.name).map((pipeline) => ({
+        id: pipeline.id,
+        name: pipeline.name,
+        status: pipeline.status === "Running" ? "Running" : pipeline.status === "Failed" || pipeline.status === "Warning" ? "Failed" : "Success",
+        schedule: pipeline.schedule,
+        lastRun: pipeline.lastRun,
+    }));
 }
 
 function activityFor(source: DataSource): SourceActivity[] {

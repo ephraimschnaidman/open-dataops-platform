@@ -19,6 +19,7 @@ export const healthResources = [
     { id: "billing-reconciliation", name: "Billing Reconciliation", type: "Pipelines", environment: "Production" },
     { id: "events-processing", name: "Events Processing", type: "Pipelines", environment: "Production" },
     { id: "warehouse-sync", name: "Warehouse Sync", type: "Pipelines", environment: "Production" },
+    { id: "risk-reporting", name: "Risk Reporting", type: "Pipelines", environment: "Production" },
     { id: "analytics-warehouse", name: "Production Warehouse", type: "Data Sources", environment: "Production" },
     { id: "billing-postgres", name: "Billing PostgreSQL", type: "Data Sources", environment: "Production" },
     { id: "events-kafka", name: "Events Kafka", type: "Data Sources", environment: "Production" },
@@ -64,19 +65,19 @@ export const runtimeRows = [
 ];
 
 export const scheduleRows = [
-    { id: "warehouse-sync", name: "Risk Reporting", adherence: "91.7%", late: "1", missed: "1", status: "Warning" as const },
-    { id: "manual-customer-export", name: "Customer Export", adherence: "96.4%", late: "5", missed: "1", status: "Warning" as const },
+    { id: "risk-reporting", name: "Risk Reporting", adherence: "91.7%", late: "1", missed: "1", status: "Warning" as const },
+    { id: "manual-customer-export", name: "Manual Customer Export", adherence: "96.4%", late: "5", missed: "1", status: "Warning" as const },
 ];
 
 export const freshnessRows = [
-    { id: "warehouse-sync", dataset: "accounts", pipeline: "Risk Reporting", expected: "< 2h", age: "3h 14m", status: "Warning" as const },
+    { id: "warehouse-sync", dataset: "accounts", pipeline: "Warehouse Sync", expected: "< 2h", age: "3h 14m", status: "Warning" as const },
     { id: "customer-ingestion", dataset: "customers", pipeline: "Customer Ingestion", expected: "< 1h", age: "18m", status: "Healthy" as const },
 ];
 
 export const sourceRows = [
     { id: "billing-postgres", name: "Billing PostgreSQL", availability: "98.7%", latency: "418 ms", failures: "11 failures", status: "Warning" as const },
     { id: "analytics-warehouse", name: "Production Warehouse", availability: "99.99%", latency: "84 ms", failures: "1 failure", status: "Healthy" as const },
-    { id: "events-kafka", name: "Events Kafka", availability: "100%", latency: "21 ms", failures: "0 failures", status: "Healthy" as const },
+    { id: "events-kafka", name: "Events Kafka", availability: "99.2%", latency: "—", failures: "3 authentication failures", status: "Warning" as const },
     { id: "customer-sqlserver", name: "Legacy SQL Server", availability: "—", latency: "—", failures: "—", status: "Disabled" as const },
 ];
 
@@ -90,5 +91,5 @@ export const reviewRows = [
     { id: "events-processing", resource: "Events Processing", type: "Pipeline", signal: "Success Rate", current: "88.4%", previous: "94.1%", status: "Critical" as const },
     { id: "billing-reconciliation", resource: "Billing Reconciliation", type: "Pipeline", signal: "Runtime", current: "8m 42s", previous: "5m 55s", status: "Warning" as const },
     { id: "billing-postgres", resource: "Billing PostgreSQL", type: "Data Source", signal: "Availability", current: "98.7%", previous: "99.9%", status: "Warning" as const },
-    { id: "warehouse-sync", resource: "Risk Reporting", type: "Pipeline", signal: "Freshness", current: "3h 14m", previous: "52m", status: "Warning" as const },
+    { id: "risk-reporting", resource: "Risk Reporting", type: "Pipeline", signal: "Schedule", current: "1 missed", previous: "On time", status: "Warning" as const },
 ];

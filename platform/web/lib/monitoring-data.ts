@@ -102,9 +102,9 @@ export const metricsByRange: Record<MonitoringTimeRange, MonitoringMetricSet> = 
 };
 
 export const activeIssues: ActiveIssue[] = [
-    { id: "issue-events", severity: "Critical", resourceType: "Pipeline", resource: "Events Processing", resourceId: "events-processing", issue: "Pipeline execution failing", platformCode: "PIPELINE_EXECUTION_FAILED", vendorCode: "SASL_AUTHENTICATION_FAILED", message: "Event broker authentication failed during pipeline extraction.", recommendedAction: "Verify broker credentials, inspect logs, and retry the failed execution.", since: "Since 18 min ago", minutesAgo: 18, runId: "run_01J94EVT18", action: "Investigate" },
-    { id: "issue-billing-source", severity: "Warning", resourceType: "Data Source", resource: "Billing PostgreSQL", resourceId: "billing-postgres", issue: "Elevated connection latency", platformCode: "SOURCE_LATENCY_ELEVATED", vendorCode: "418 ms", message: "Connection latency is above the configured operational threshold.", recommendedAction: "Review source health and database load.", since: "Since 42 min ago", minutesAgo: 42, action: "View Source" },
-    { id: "issue-billing-validation", severity: "Warning", resourceType: "Pipeline", resource: "Billing Reconciliation", resourceId: "billing-reconciliation", issue: "Validation check failed", platformCode: "VALIDATION_CHECK_FAILED", vendorCode: "CHECK_NULL_RATE_THRESHOLD", message: "One validation rule failed during the latest execution.", recommendedAction: "Review the failed validation result before retrying.", since: "Since 1 hr ago", minutesAgo: 60, runId: "run_01J97BIL02", action: "Review Validation" },
+    { id: "issue-events", severity: "Critical", resourceType: "Pipeline", resource: "Events Processing", resourceId: "events-processing", issue: "Pipeline execution failing", platformCode: "PIPELINE_EXECUTION_FAILED", vendorCode: "SASL_AUTHENTICATION_FAILED", message: "Events Kafka authentication failed during Extract.", recommendedAction: "Review the Events Kafka authentication and connection configuration, then retry after the source condition is corrected.", since: "Since 2 min ago", minutesAgo: 2, runId: "run_01J94EVT18", action: "Investigate" },
+    { id: "issue-billing-source", severity: "Warning", resourceType: "Data Source", resource: "Billing PostgreSQL", resourceId: "billing-postgres", issue: "Elevated connection latency", platformCode: "SOURCE_LATENCY_ELEVATED", message: "Connection latency is above the configured operational threshold.", recommendedAction: "Review source health and database load.", since: "Since 42 min ago", minutesAgo: 42, action: "View Source" },
+    { id: "issue-billing-validation", severity: "Warning", resourceType: "Pipeline", resource: "Billing Reconciliation", resourceId: "billing-reconciliation", issue: "Validation check failed", platformCode: "VALIDATION_CHECK_FAILED", vendorCode: "CHECK_UNIQUENESS_VIOLATION", message: "Order ID unique found 318 duplicates; expected 0 duplicates.", recommendedAction: "Review duplicate order records before retrying the pipeline.", since: "Since 1 hr ago", minutesAgo: 60, runId: "run_01J97BIL02", action: "Review Validation" },
 ];
 
 export const pipelineHealth: PipelineHealthRow[] = [
@@ -117,24 +117,24 @@ export const pipelineHealth: PipelineHealthRow[] = [
 ];
 
 export const sourceHealth: SourceHealthRow[] = [
-    { name: "Production Warehouse", environment: "Production", status: "Healthy", availability: "99.99%", latency: "84 ms", lastCheck: "2 min ago" },
-    { id: "billing-postgres", name: "Billing PostgreSQL", environment: "Production", status: "Warning", availability: "99.4%", latency: "418 ms", lastCheck: "3 min ago", platformCode: "SOURCE_LATENCY_ELEVATED" },
-    { id: "events-kafka", name: "Events Kafka", environment: "Production", status: "Healthy", availability: "100%", latency: "21 ms", lastCheck: "1 min ago" },
+    { id: "analytics-warehouse", name: "Production Warehouse", environment: "Production", status: "Healthy", availability: "99.99%", latency: "84 ms", lastCheck: "2 min ago" },
+    { id: "billing-postgres", name: "Billing PostgreSQL", environment: "Production", status: "Warning", availability: "99.4%", latency: "418 ms", lastCheck: "5 min ago", platformCode: "SOURCE_LATENCY_ELEVATED" },
+    { id: "events-kafka", name: "Events Kafka", environment: "Production", status: "Failed", availability: "99.2%", latency: "—", lastCheck: "2 min ago", platformCode: "SOURCE_AUTHENTICATION_FAILED", vendorCode: "SASL_AUTHENTICATION_FAILED" },
     { id: "customer-sqlserver", name: "Legacy SQL Server", environment: "Development", status: "Disabled", availability: "—", latency: "—", lastCheck: "4 days ago" },
 ];
 
 export const scheduleIssues: ScheduleIssue[] = [
-    { id: "schedule-export", pipelineId: "manual-customer-export", pipeline: "Customer Export", environment: "Staging", status: "Late", expected: "9:00 AM", actual: "9:08 AM", delay: "8m", platformCode: "PIPELINE_SCHEDULE_DELAYED" },
-    { id: "schedule-risk", pipeline: "Risk Reporting", environment: "Production", status: "Missed", expected: "8:00 AM", actual: "—", platformCode: "PIPELINE_SCHEDULE_MISSED" },
+    { id: "schedule-export", pipelineId: "manual-customer-export", pipeline: "Manual Customer Export", environment: "Staging", status: "Late", expected: "9:00 AM", actual: "9:08 AM", delay: "8m", platformCode: "PIPELINE_SCHEDULE_DELAYED" },
+    { id: "schedule-risk", pipelineId: "risk-reporting", pipeline: "Risk Reporting", environment: "Production", status: "Missed", expected: "8:00 AM", actual: "—", platformCode: "PIPELINE_SCHEDULE_MISSED" },
 ];
 
 export const recentEvents: MonitoringEvent[] = [
-    { id: "event-1", time: "10:43 AM", resource: "Customer Ingestion", resourceType: "Pipeline", resourceId: "customer-ingestion", environment: "Production", description: "completed successfully", platformCode: "RUN_COMPLETED", tone: "success", runId: "run_01J92CING8" },
-    { id: "event-2", time: "10:24 AM", resource: "Events Processing", resourceType: "Pipeline", resourceId: "events-processing", environment: "Production", description: "execution failed", platformCode: "PIPELINE_EXECUTION_FAILED", tone: "error", runId: "run_01J94EVT18", logs: true },
+    { id: "event-1", time: "10:34 AM", resource: "Customer Ingestion", resourceType: "Pipeline", resourceId: "customer-ingestion", environment: "Production", description: "completed successfully", platformCode: "RUN_COMPLETED", tone: "success", runId: "run_01J92CING8" },
+    { id: "event-2", time: "10:42 AM", resource: "Events Processing", resourceType: "Pipeline", resourceId: "events-processing", environment: "Production", description: "execution failed", platformCode: "PIPELINE_EXECUTION_FAILED", tone: "error", runId: "run_01J94EVT18", logs: true },
     { id: "event-3", time: "10:19 AM", resource: "Billing PostgreSQL", resourceType: "Data Source", resourceId: "billing-postgres", environment: "Production", description: "latency exceeded threshold", platformCode: "SOURCE_LATENCY_ELEVATED", tone: "warning" },
-    { id: "event-4", time: "9:58 AM", resource: "Billing Reconciliation", resourceType: "Pipeline", resourceId: "billing-reconciliation", environment: "Production", description: "validation check failed", platformCode: "VALIDATION_CHECK_FAILED", tone: "warning", runId: "run_01J97BIL02" },
-    { id: "event-5", time: "9:43 AM", resource: "Customer Ingestion", resourceType: "Pipeline", resourceId: "customer-ingestion", environment: "Production", description: "completed successfully", platformCode: "RUN_COMPLETED", tone: "success", runId: "run_01J92CING8" },
-    { id: "event-6", time: "9:08 AM", resource: "Customer Export", resourceType: "Pipeline", resourceId: "manual-customer-export", environment: "Staging", description: "started outside its schedule window", platformCode: "PIPELINE_SCHEDULE_DELAYED", tone: "warning" },
+    { id: "event-4", time: "9:36 AM", resource: "Billing Reconciliation", resourceType: "Pipeline", resourceId: "billing-reconciliation", environment: "Production", description: "Order ID unique failed with 318 duplicates", platformCode: "VALIDATION_CHECK_FAILED", tone: "warning", runId: "run_01J97BIL02" },
+    { id: "event-5", time: "10:07 AM", resource: "Customer Ingestion", resourceType: "Pipeline", resourceId: "customer-ingestion", environment: "Production", description: "completed with a customer email validation warning", platformCode: "RUN_COMPLETED", tone: "success", runId: "run_01J92CVAL9" },
+    { id: "event-6", time: "9:08 AM", resource: "Manual Customer Export", resourceType: "Pipeline", resourceId: "manual-customer-export", environment: "Staging", description: "started outside its schedule window", platformCode: "PIPELINE_SCHEDULE_DELAYED", tone: "warning" },
 ];
 
 const labels: Record<MonitoringTimeRange, string[]> = {
