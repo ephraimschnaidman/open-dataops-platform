@@ -2,72 +2,916 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Activity, AlertTriangle, CheckCircle2, CircleAlert, FileCheck2, MoreHorizontal, RefreshCw, ShieldAlert, X } from "lucide-react";
+import {
+    Activity,
+    AlertTriangle,
+    CheckCircle2,
+    CircleAlert,
+    FileCheck2,
+    MoreHorizontal,
+    RefreshCw,
+    ShieldAlert,
+    X,
+} from "lucide-react";
 import { DropdownMenu } from "@/components/overlays";
-import { Button, Card, EmptyState, FilterSelect, MetricCard, OperationalStatus, PageHeader, SearchField, Skeleton } from "@/components/ui";
-import { ValidationResultBadge, ValidationSeverityBadge } from "@/components/validation-badges";
-import { validationActivities, validationChecks, type ValidationCheck, type ValidationEnvironment, type ValidationResult, type ValidationSeverity } from "@/lib/validation-data";
+import {
+    Button,
+    Card,
+    EmptyState,
+    FilterSelect,
+    MetricCard,
+    OperationalStatus,
+    PageHeader,
+    SearchField,
+    Skeleton,
+} from "@/components/ui";
+import {
+    ValidationResultBadge,
+    ValidationSeverityBadge,
+} from "@/components/validation-badges";
+import {
+    validationActivities,
+    validationChecks,
+    type ValidationCheck,
+    type ValidationEnvironment,
+    type ValidationResult,
+    type ValidationSeverity,
+} from "@/lib/validation-data";
 import { withReturnTo } from "@/lib/navigation-context";
-import { getDevelopmentQaParam, isDevelopmentQaEnabled } from "@/lib/development-qa";
-import { isEnvironment, useEnvironmentContext } from "@/lib/environment-context";
+import {
+    getDevelopmentQaParam,
+    isDevelopmentQaEnabled,
+} from "@/lib/development-qa";
+import {
+    isEnvironment,
+    useEnvironmentContext,
+} from "@/lib/environment-context";
 
-type QaState = "mixed" | "passing" | "warning" | "blocking" | "empty" | "no-run" | "filtered-empty" | "loading" | "error" | "partial" | "stale";
-const times = [{ label: "Last 1 hour", value: "1h" }, { label: "Last 6 hours", value: "6h" }, { label: "Last 24 hours", value: "24h" }, { label: "Last 7 days", value: "7d" }, { label: "Last 30 days", value: "30d" }];
-const options = (all: string, values: string[]) => [{ label: all, value: all === "Mixed results" ? "mixed" : "All" }, ...values.map((value) => ({ label: all === "Mixed results" ? value.replaceAll("-", " ").replace(/^./, (letter) => letter.toUpperCase()) : value, value }))];
+type QaState =
+    | "mixed"
+    | "passing"
+    | "warning"
+    | "blocking"
+    | "empty"
+    | "no-run"
+    | "filtered-empty"
+    | "loading"
+    | "error"
+    | "partial"
+    | "stale";
+const times = [
+    { label: "Last 1 hour", value: "1h" },
+    { label: "Last 6 hours", value: "6h" },
+    { label: "Last 24 hours", value: "24h" },
+    { label: "Last 7 days", value: "7d" },
+    { label: "Last 30 days", value: "30d" },
+];
+const options = (all: string, values: string[]) => [
+    { label: all, value: all === "Mixed results" ? "mixed" : "All" },
+    ...values.map((value) => ({
+        label:
+            all === "Mixed results"
+                ? value
+                      .replaceAll("-", " ")
+                      .replace(/^./, (letter) => letter.toUpperCase())
+                : value,
+        value,
+    })),
+];
 
 function validationContextEnvironment(params: Pick<URLSearchParams, "get">) {
     const explicit = params.get("environment");
     if (isEnvironment(explicit)) return explicit;
-    return validationChecks.find((check) => check.pipelineId === params.get("pipeline") || check.runId === params.get("run") || check.sourceId === params.get("source") || check.id === params.get("check"))?.environment;
+    return validationChecks.find(
+        (check) =>
+            check.pipelineId === params.get("pipeline") ||
+            check.runId === params.get("run") ||
+            check.sourceId === params.get("source") ||
+            check.id === params.get("check"),
+    )?.environment;
 }
 
-function ScopeBanner({ params, clear }: { params: URLSearchParams; clear: () => void }) {
-    const entries = [["Pipeline", params.get("pipeline")], ["Run", params.get("run")], ["Source", params.get("source")], ["Check", params.get("check")]].filter((item) => item[1]);
+function ScopeBanner({
+    params,
+    clear,
+}: {
+    params: URLSearchParams;
+    clear: () => void;
+}) {
+    const entries = [
+        ["Pipeline", params.get("pipeline")],
+        ["Run", params.get("run")],
+        ["Source", params.get("source")],
+        ["Check", params.get("check")],
+    ].filter((item) => item[1]);
     if (!entries.length) return null;
-    return <div className="mb-5 flex flex-col justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-4 sm:flex-row sm:items-center"><div><p className="text-sm font-semibold text-indigo-950">Scoped validation results</p><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-indigo-800">{entries.map(([label, value]) => <span key={label}><strong>{label}:</strong> {value}</span>)}</div></div><Button variant="ghost" onClick={clear}><X className="h-3.5 w-3.5" /> Clear Scope</Button></div>;
+    return (
+        <div className="mb-5 flex flex-col justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-4 sm:flex-row sm:items-center">
+            <div>
+                <p className="text-sm font-semibold text-indigo-950">
+                    Scoped validation results
+                </p>
+                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-indigo-800">
+                    {entries.map(([label, value]) => (
+                        <span key={label}>
+                            <strong>{label}:</strong> {value}
+                        </span>
+                    ))}
+                </div>
+            </div>
+            <Button variant="ghost" onClick={clear}>
+                <X className="h-3.5 w-3.5" /> Clear Scope
+            </Button>
+        </div>
+    );
 }
 
-function Attention({ checks, open }: { checks: ValidationCheck[]; open: (id: string) => void }) {
-    const failed = checks.filter((check) => check.result === "Failed").sort((a, b) => Number(b.severity === "Blocking") - Number(a.severity === "Blocking"));
-    return <section className="mt-7"><h2 className="mb-3 text-[15px] font-semibold text-zinc-900">Checks Requiring Attention</h2>{failed.length ? <Card><div className="divide-y divide-zinc-100">{failed.map((check) => <button key={check.id} onClick={() => open(check.id)} className="grid w-full gap-3 p-4 text-left hover:bg-zinc-50 md:grid-cols-[110px_1fr_1fr_auto]"><ValidationSeverityBadge severity={check.severity} /><div><p className="text-sm font-semibold text-zinc-900">{check.name}</p><p className="mt-1 font-mono text-[10px] text-zinc-500">{check.ruleCode}</p></div><div><p className="text-xs font-medium text-zinc-700">{check.pipeline}</p><p className="mt-1 text-xs text-zinc-500">Actual: {check.actual} · Expected: {check.expected}</p></div><div className="md:text-right"><ValidationResultBadge result={check.result} /><p className="mt-1 text-[11px] text-zinc-400">{check.evaluated}</p></div></button>)}</div></Card> : <EmptyState title="All validation checks are passing" description="42 active checks are currently within their expected thresholds." />}</section>;
+function Attention({
+    checks,
+    open,
+}: {
+    checks: ValidationCheck[];
+    open: (id: string) => void;
+}) {
+    const failed = checks
+        .filter((check) => check.result === "Failed")
+        .sort(
+            (a, b) =>
+                Number(b.severity === "Blocking") -
+                Number(a.severity === "Blocking"),
+        );
+    return (
+        <section className="mt-7">
+            <h2 className="mb-3 text-[15px] font-semibold text-zinc-900">
+                Checks Requiring Attention
+            </h2>
+            {failed.length ? (
+                <Card>
+                    <div className="divide-y divide-zinc-100">
+                        {failed.map((check) => (
+                            <button
+                                key={check.id}
+                                onClick={() => open(check.id)}
+                                className="grid w-full gap-3 p-4 text-left hover:bg-zinc-50 md:grid-cols-[110px_1fr_1fr_auto]"
+                            >
+                                <ValidationSeverityBadge
+                                    severity={check.severity}
+                                />
+                                <div>
+                                    <p className="text-sm font-semibold text-zinc-900">
+                                        {check.name}
+                                    </p>
+                                    <p className="mt-1 font-mono text-[10px] text-zinc-500">
+                                        {check.ruleCode}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-medium text-zinc-700">
+                                        {check.pipeline}
+                                    </p>
+                                    <p className="mt-1 text-xs text-zinc-500">
+                                        Actual: {check.actual} · Expected:{" "}
+                                        {check.expected}
+                                    </p>
+                                </div>
+                                <div className="md:text-right">
+                                    <ValidationResultBadge
+                                        result={check.result}
+                                    />
+                                    <p className="mt-1 text-[11px] text-zinc-400">
+                                        {check.evaluated}
+                                    </p>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </Card>
+            ) : (
+                <EmptyState
+                    title="All validation checks are passing"
+                    description="42 active checks are currently within their expected thresholds."
+                />
+            )}
+        </section>
+    );
 }
 
-function Results({ checks, open, logs }: { checks: ValidationCheck[]; open: (id: string) => void; logs: (check: ValidationCheck) => void }) {
-    return <section className="mt-7"><div className="mb-3"><h2 className="text-[15px] font-semibold text-zinc-900">Validation Results</h2><p className="mt-0.5 text-xs text-zinc-500">Latest evaluation for each active check.</p></div><Card className="overflow-hidden"><div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1050px] text-left"><thead><tr className="border-b border-zinc-200 bg-zinc-50/70 text-[10px] font-semibold uppercase tracking-wider text-zinc-400"><th className="px-4 py-2.5">Check</th><th className="px-3 py-2.5">Result</th><th className="px-3 py-2.5">Severity</th><th className="px-3 py-2.5">Pipeline</th><th className="px-3 py-2.5">Dataset</th><th className="px-3 py-2.5">Actual</th><th className="px-3 py-2.5">Expected</th><th className="px-3 py-2.5">Last Evaluated</th><th className="px-3 py-2.5"><span className="sr-only">Actions</span></th></tr></thead><tbody>{checks.map((check) => <tr key={check.id} tabIndex={0} onClick={() => open(check.id)} onKeyDown={(event) => event.key === "Enter" && open(check.id)} className="cursor-pointer border-b border-zinc-100 text-xs last:border-0 hover:bg-zinc-50"><td className="px-4 py-3"><p className="font-medium text-zinc-900">{check.name}</p><p className="mt-0.5 font-mono text-[10px] text-zinc-400">{check.technicalId}</p></td><td className="px-3 py-3"><ValidationResultBadge result={check.result} /></td><td className="px-3 py-3"><ValidationSeverityBadge severity={check.severity} /></td><td className="px-3 py-3 text-zinc-700">{check.pipeline}</td><td className="px-3 py-3 font-mono text-[10px] text-zinc-600">{check.dataset}{check.column ? `.${check.column}` : ""}</td><td className="px-3 py-3 font-medium text-zinc-800">{check.actual}</td><td className="px-3 py-3 text-zinc-600">{check.expected}</td><td className="px-3 py-3 text-zinc-500">{check.evaluated}</td><td className="px-3 py-3" onClick={(event) => event.stopPropagation()}><DropdownMenu items={[{ label: "View Details", onSelect: () => open(check.id) }, { label: "View Run", onSelect: () => location.assign(`/pipeline-runs/${check.runId}`) }, { label: "View Logs", onSelect: () => logs(check) }, { label: "View Pipeline", onSelect: () => location.assign(`/pipelines/${check.pipelineId}`) }]}><Button aria-label={`Actions for ${check.name}`} variant="ghost" className="h-7 px-2"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenu></td></tr>)}</tbody></table></div><div className="divide-y divide-zinc-100 md:hidden">{checks.map((check) => <button key={check.id} onClick={() => open(check.id)} className="w-full p-4 text-left"><p className="font-medium text-zinc-900">{check.name}</p><div className="mt-2 flex gap-2"><ValidationResultBadge result={check.result} /><ValidationSeverityBadge severity={check.severity} /></div><p className="mt-2 text-xs text-zinc-600">{check.pipeline}</p><div className="mt-2 grid grid-cols-2 text-xs"><span>Actual: <strong>{check.actual}</strong></span><span>Expected: <strong>{check.expected}</strong></span></div><p className="mt-2 font-mono text-[10px] text-zinc-500">{check.platformCode}</p></button>)}</div></Card></section>;
+function Results({
+    checks,
+    open,
+    logs,
+    navigate,
+}: {
+    checks: ValidationCheck[];
+    open: (id: string) => void;
+    logs: (check: ValidationCheck) => void;
+    navigate: (href: string) => void;
+}) {
+    return (
+        <section className="mt-7">
+            <div className="mb-3">
+                <h2 className="text-[15px] font-semibold text-zinc-900">
+                    Validation Results
+                </h2>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                    Latest evaluation for each active check.
+                </p>
+            </div>
+            <Card className="overflow-hidden">
+                <div className="hidden overflow-x-auto md:block">
+                    <table className="w-full min-w-[1050px] text-left">
+                        <thead>
+                            <tr className="border-b border-zinc-200 bg-zinc-50/70 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                                <th className="px-4 py-2.5">Check</th>
+                                <th className="px-3 py-2.5">Result</th>
+                                <th className="px-3 py-2.5">Severity</th>
+                                <th className="px-3 py-2.5">Pipeline</th>
+                                <th className="px-3 py-2.5">Dataset</th>
+                                <th className="px-3 py-2.5">Actual</th>
+                                <th className="px-3 py-2.5">Expected</th>
+                                <th className="px-3 py-2.5">Last Evaluated</th>
+                                <th className="px-3 py-2.5">
+                                    <span className="sr-only">Actions</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {checks.map((check) => (
+                                <tr
+                                    key={check.id}
+                                    tabIndex={0}
+                                    onClick={() => open(check.id)}
+                                    onKeyDown={(event) =>
+                                        event.key === "Enter" && open(check.id)
+                                    }
+                                    className="cursor-pointer border-b border-zinc-100 text-xs last:border-0 hover:bg-zinc-50"
+                                >
+                                    <td className="px-4 py-3">
+                                        <p className="font-medium text-zinc-900">
+                                            {check.name}
+                                        </p>
+                                        <p className="mt-0.5 font-mono text-[10px] text-zinc-400">
+                                            {check.technicalId}
+                                        </p>
+                                    </td>
+                                    <td className="px-3 py-3">
+                                        <ValidationResultBadge
+                                            result={check.result}
+                                        />
+                                    </td>
+                                    <td className="px-3 py-3">
+                                        <ValidationSeverityBadge
+                                            severity={check.severity}
+                                        />
+                                    </td>
+                                    <td className="px-3 py-3 text-zinc-700">
+                                        {check.pipeline}
+                                    </td>
+                                    <td className="px-3 py-3 font-mono text-[10px] text-zinc-600">
+                                        {check.dataset}
+                                        {check.column ? `.${check.column}` : ""}
+                                    </td>
+                                    <td className="px-3 py-3 font-medium text-zinc-800">
+                                        {check.actual}
+                                    </td>
+                                    <td className="px-3 py-3 text-zinc-600">
+                                        {check.expected}
+                                    </td>
+                                    <td className="px-3 py-3 text-zinc-500">
+                                        {check.evaluated}
+                                    </td>
+                                    <td
+                                        className="px-3 py-3"
+                                        onClick={(event) =>
+                                            event.stopPropagation()
+                                        }
+                                    >
+                                        <DropdownMenu
+                                            items={[
+                                                {
+                                                    label: "View Details",
+                                                    onSelect: () =>
+                                                        open(check.id),
+                                                },
+                                                {
+                                                    label: "View Run",
+                                                    onSelect: () =>
+                                                        navigate(
+                                                            `/pipeline-runs/${check.runId}`,
+                                                        ),
+                                                },
+                                                {
+                                                    label: "View Logs",
+                                                    onSelect: () => logs(check),
+                                                },
+                                                {
+                                                    label: "View Pipeline",
+                                                    onSelect: () =>
+                                                        navigate(
+                                                            `/pipelines/${check.pipelineId}`,
+                                                        ),
+                                                },
+                                            ]}
+                                        >
+                                            <Button
+                                                aria-label={`Actions for ${check.name}`}
+                                                variant="ghost"
+                                                className="h-7 px-2"
+                                            >
+                                                <MoreHorizontal className="h-4 w-4" />
+                                            </Button>
+                                        </DropdownMenu>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                <div className="divide-y divide-zinc-100 md:hidden">
+                    {checks.map((check) => (
+                        <button
+                            key={check.id}
+                            onClick={() => open(check.id)}
+                            className="w-full p-4 text-left"
+                        >
+                            <p className="font-medium text-zinc-900">
+                                {check.name}
+                            </p>
+                            <div className="mt-2 flex gap-2">
+                                <ValidationResultBadge result={check.result} />
+                                <ValidationSeverityBadge
+                                    severity={check.severity}
+                                />
+                            </div>
+                            <p className="mt-2 text-xs text-zinc-600">
+                                {check.pipeline}
+                            </p>
+                            <div className="mt-2 grid grid-cols-2 text-xs">
+                                <span>
+                                    Actual: <strong>{check.actual}</strong>
+                                </span>
+                                <span>
+                                    Expected: <strong>{check.expected}</strong>
+                                </span>
+                            </div>
+                            <p className="mt-2 font-mono text-[10px] text-zinc-500">
+                                {check.platformCode}
+                            </p>
+                        </button>
+                    ))}
+                </div>
+            </Card>
+        </section>
+    );
 }
 
 export function ValidationPage() {
-    const router = useRouter(); const searchParams = useSearchParams(); const paramString = searchParams.toString();
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const paramString = searchParams.toString();
     const { currentEnvironment } = useEnvironmentContext();
-    const initialQa = (getDevelopmentQaParam(searchParams) as QaState) || "mixed";
-    const [qa, setQa] = useState<QaState>(initialQa); const [query, setQuery] = useState(searchParams.get("q") || "");
-    const [result, setResult] = useState(searchParams.get("result") || "All"); const [severity, setSeverity] = useState(searchParams.get("severity") || "All");
-    const [environment, setEnvironmentState] = useState<ValidationEnvironment | "All">(validationContextEnvironment(searchParams) || currentEnvironment); const setEnvironment = (value: string) => setEnvironmentState(value as ValidationEnvironment | "All"); const [pipeline, setPipeline] = useState(searchParams.get("pipeline") || "All");
-    const [checkType, setCheckType] = useState(searchParams.get("type") || "All"); const [time, setTime] = useState(searchParams.get("time") || "24h"); const [updated, setUpdated] = useState("just now");
-    useEffect(() => { setQa((getDevelopmentQaParam(searchParams) as QaState) || "mixed"); }, [paramString, searchParams]);
-    useEffect(() => { setEnvironment(validationContextEnvironment(searchParams) || currentEnvironment); }, [currentEnvironment, searchParams]);
-    const setUrl = (changes: Record<string, string | null>) => { const next = new URLSearchParams(searchParams.toString()); Object.entries(changes).forEach(([key, value]) => value && value !== "All" ? next.set(key, value) : next.delete(key)); router.replace(`/validation${next.toString() ? `?${next}` : ""}`, { scroll: false }); };
-    const scopedRun = searchParams.get("run"); const scopedSource = searchParams.get("source"); const scopedCheck = searchParams.get("check");
+    const initialQa =
+        (getDevelopmentQaParam(searchParams) as QaState) || "mixed";
+    const [qa, setQa] = useState<QaState>(initialQa);
+    const [query, setQuery] = useState(searchParams.get("q") || "");
+    const [result, setResult] = useState(searchParams.get("result") || "All");
+    const [severity, setSeverity] = useState(
+        searchParams.get("severity") || "All",
+    );
+    const [environment, setEnvironmentState] = useState<
+        ValidationEnvironment | "All"
+    >(validationContextEnvironment(searchParams) || currentEnvironment);
+    const setEnvironment = (value: string) =>
+        setEnvironmentState(value as ValidationEnvironment | "All");
+    const [pipeline, setPipeline] = useState(
+        searchParams.get("pipeline") || "All",
+    );
+    const [checkType, setCheckType] = useState(
+        searchParams.get("type") || "All",
+    );
+    const [time, setTime] = useState(searchParams.get("time") || "24h");
+    const [updated, setUpdated] = useState("just now");
+    useEffect(() => {
+        setQa((getDevelopmentQaParam(searchParams) as QaState) || "mixed");
+    }, [paramString, searchParams]);
+    useEffect(() => {
+        setEnvironment(
+            validationContextEnvironment(searchParams) || currentEnvironment,
+        );
+    }, [currentEnvironment, searchParams]);
+    const setUrl = (changes: Record<string, string | null>) => {
+        const next = new URLSearchParams(searchParams.toString());
+        Object.entries(changes).forEach(([key, value]) =>
+            value && value !== "All" ? next.set(key, value) : next.delete(key),
+        );
+        router.replace(`/validation${next.toString() ? `?${next}` : ""}`, {
+            scroll: false,
+        });
+    };
+    const scopedRun = searchParams.get("run");
+    const scopedSource = searchParams.get("source");
+    const scopedCheck = searchParams.get("check");
     let base = validationChecks;
-    if (qa === "passing") base = validationChecks.filter((c) => c.result === "Passed");
-    if (qa === "warning") base = validationChecks.filter((c) => c.result !== "Failed" || c.severity === "Warning");
-    if (qa === "blocking") base = validationChecks.filter((c) => c.id === "order-id-unique" || c.result === "Passed");
+    if (qa === "passing")
+        base = validationChecks.filter((c) => c.result === "Passed");
+    if (qa === "warning")
+        base = validationChecks.filter(
+            (c) => c.result !== "Failed" || c.severity === "Warning",
+        );
+    if (qa === "blocking")
+        base = validationChecks.filter(
+            (c) => c.id === "order-id-unique" || c.result === "Passed",
+        );
     if (qa === "empty") base = [];
-    const filtered = useMemo(() => base.filter((check) => { const haystack = [check.name, check.technicalId, check.pipeline, check.source, check.dataset, check.column, check.platformCode, check.ruleCode, check.runId, check.runLabel].join(" ").toLowerCase(); return (!query || haystack.includes(query.toLowerCase())) && (result === "All" || check.result === result) && (severity === "All" || check.severity === severity) && (environment === "All" || check.environment === environment) && (pipeline === "All" || check.pipelineId === pipeline) && (checkType === "All" || check.checkType === checkType) && (!scopedRun || check.runId === scopedRun || check.runLabel === scopedRun) && (!scopedSource || check.sourceId === scopedSource || check.source === scopedSource) && (!scopedCheck || check.id === scopedCheck); }), [base, query, result, severity, environment, pipeline, checkType, scopedRun, scopedSource, scopedCheck]);
-    const clearFilters = () => { setQuery(""); setResult("All"); setSeverity("All"); setEnvironment("All"); setPipeline("All"); setCheckType("All"); router.replace("/validation"); };
-    const open = (id: string) => router.push(withReturnTo(`/validation/${id}`, `${window.location.pathname}${window.location.search}`));
-    const logs = (c: ValidationCheck) => router.push(`/logs?${new URLSearchParams({ scope: "validation", pipeline: c.pipelineId, run: c.runId, stage: "Validate", code: c.platformCode, environment: c.environment, time }).toString()}`);
-    const qaSelect = (value: string) => { if (!isDevelopmentQaEnabled) return; const next = value as QaState; setQa(next); setUrl({ qa: next === "mixed" ? null : next }); };
+    const filtered = useMemo(
+        () =>
+            base.filter((check) => {
+                const haystack = [
+                    check.name,
+                    check.technicalId,
+                    check.pipeline,
+                    check.source,
+                    check.dataset,
+                    check.column,
+                    check.platformCode,
+                    check.ruleCode,
+                    check.runId,
+                    check.runLabel,
+                ]
+                    .join(" ")
+                    .toLowerCase();
+                return (
+                    (!query || haystack.includes(query.toLowerCase())) &&
+                    (result === "All" || check.result === result) &&
+                    (severity === "All" || check.severity === severity) &&
+                    (environment === "All" ||
+                        check.environment === environment) &&
+                    (pipeline === "All" || check.pipelineId === pipeline) &&
+                    (checkType === "All" || check.checkType === checkType) &&
+                    (!scopedRun ||
+                        check.runId === scopedRun ||
+                        check.runLabel === scopedRun) &&
+                    (!scopedSource ||
+                        check.sourceId === scopedSource ||
+                        check.source === scopedSource) &&
+                    (!scopedCheck || check.id === scopedCheck)
+                );
+            }),
+        [
+            base,
+            query,
+            result,
+            severity,
+            environment,
+            pipeline,
+            checkType,
+            scopedRun,
+            scopedSource,
+            scopedCheck,
+        ],
+    );
+    const clearFilters = () => {
+        setQuery("");
+        setResult("All");
+        setSeverity("All");
+        setEnvironment("All");
+        setPipeline("All");
+        setCheckType("All");
+        router.replace("/validation");
+    };
+    const open = (id: string) =>
+        router.push(
+            withReturnTo(
+                `/validation/${id}`,
+                `${window.location.pathname}${window.location.search}`,
+            ),
+        );
+    const logs = (c: ValidationCheck) =>
+        router.push(
+            `/logs?${new URLSearchParams({ scope: "validation", pipeline: c.pipelineId, run: c.runId, stage: "Validate", code: c.platformCode, environment: c.environment, time }).toString()}`,
+        );
+    const qaSelect = (value: string) => {
+        if (!isDevelopmentQaEnabled) return;
+        const next = value as QaState;
+        setQa(next);
+        setUrl({ qa: next === "mixed" ? null : next });
+    };
     if (qa === "loading") return <ValidationPageSkeleton />;
-    if (qa === "error") return <div className="animate-enter"><PageHeader title="Validation" description="Review data-quality checks and investigate validation failures." /><Card><div className="p-4"><OperationalStatus statusLabel="Failed" result={{ status: "Error", platformCode: "VALIDATION_UNAVAILABLE", vendorCode: "503", message: "The platform could not retrieve validation results.", recommendedAction: "Try loading Validation again." }} action={<Button onClick={() => qaSelect("mixed")}>Try Again</Button>} /></div></Card></div>;
-    const allPassing = qa === "passing"; const blocking = qa === "blocking" || (!allPassing && base.some((c) => c.result === "Failed" && c.severity === "Blocking"));
-    const health = allPassing ? { status: "Success" as const, label: "Healthy" as const, platformCode: "VALIDATION_HEALTHY", message: "All currently evaluated validation checks are passing.", recommendedAction: "No recommended action required." } : blocking ? { status: "Error" as const, label: "Failed" as const, platformCode: "VALIDATION_FAILURE", message: "One blocking validation check failed and caused a pipeline execution to stop.", recommendedAction: "Investigate the blocking validation failure." } : { status: "Warning" as const, label: "Warning" as const, platformCode: "VALIDATION_DEGRADED", message: "2 validation checks currently exceed their configured warning thresholds.", recommendedAction: "Review the failing checks below." };
-    const filteredEmpty = qa === "filtered-empty" || (!filtered.length && base.length > 0); const noRun = qa === "no-run";
-    return <div className="animate-enter"><PageHeader title="Validation" description="Review data-quality checks and investigate validation failures." action={<div className="flex flex-wrap items-center gap-2">{process.env.NODE_ENV === "development" && <><span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">QA State</span><FilterSelect label="QA State" value={qa} onChange={qaSelect} options={options("Mixed results", ["passing", "warning", "blocking", "empty", "no-run", "filtered-empty", "loading", "error", "partial", "stale"])} /></>}<FilterSelect label="Time range" value={time} onChange={(v) => { setTime(v); setUrl({ time: v === "24h" ? null : v }); }} options={times} /><span className="text-[11px] text-zinc-400">Last updated {updated}</span><Button onClick={() => setUpdated("just now")}><RefreshCw className="h-3.5 w-3.5" /> Refresh</Button></div>} />
-        <ScopeBanner params={new URLSearchParams(searchParams.toString())} clear={clearFilters} />
-        {qa === "stale" && <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4"><p className="flex items-center gap-2 text-sm font-semibold text-amber-900"><AlertTriangle className="h-4 w-4" /> Validation data may be stale</p><p className="mt-1 font-mono text-[10px] text-amber-700">VALIDATION_DATA_STALE</p><p className="mt-2 text-xs text-amber-900">The latest validation evaluation completed 45 minutes ago. <strong>Last Evaluated:</strong> 7:55 PM</p><p className="mt-1 text-xs text-amber-800"><strong>Recommended Action:</strong> Confirm the latest pipeline execution before relying on these results.</p></div>}
-        {qa === "empty" ? <EmptyState title="No validation checks configured" description="Validation results will appear here after checks are added to your pipelines." icon={<FileCheck2 className="h-4 w-4" />} tone="neutral" action={<Button onClick={() => router.push("/pipelines")}>View Pipelines</Button>} /> : noRun ? <EmptyState title="No validation results for this run" description={`Validation was not executed during Run ${scopedRun || "#8F42A1"}.`} icon={<FileCheck2 className="h-4 w-4" />} tone="neutral" /> : <><Card title="Validation Health" description="Current data-quality evaluation across active checks."><div className="p-4"><OperationalStatus result={health} statusLabel={health.label} details={[{ label: "Last Evaluated", value: qa === "stale" ? "7:55 PM" : "8:34 PM" }]} /></div></Card><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><MetricCard label="Active Checks" value="42" detail="Configured and enabled" icon={FileCheck2} /><MetricCard label="Passing" value={allPassing ? "42" : "38"} detail="Within threshold" icon={CheckCircle2} tone="positive" /><MetricCard label="Warning" value={allPassing ? "0" : qa === "blocking" ? "0" : "3"} detail="Pipeline continued" icon={CircleAlert} tone="warning" /><MetricCard label="Failed" value={blocking ? "1" : "0"} detail="Blocking impact" icon={ShieldAlert} tone={blocking ? "danger" : "neutral"} /><MetricCard label="Pass Rate" value={allPassing ? "100%" : "90.5%"} detail="Selected time range" icon={Activity} tone="positive" /></div><Card className="mt-7"><div className="flex flex-col gap-2 p-3 xl:flex-row"><SearchField value={query} onChange={(v) => { setQuery(v); setUrl({ q: v || null }); }} placeholder="Search validation checks..." className="flex-1" /><FilterSelect label="Result" value={result} onChange={(v) => { setResult(v); setUrl({ result: v }); }} options={options("All Results", ["Passed", "Failed", "Not Evaluated"])} /><FilterSelect label="Severity" value={severity} onChange={(v) => { setSeverity(v); setUrl({ severity: v }); }} options={options("All Severities", ["Warning", "Blocking"])} /><FilterSelect label="Environment" value={environment} onChange={(v) => { setEnvironment(v); setUrl({ environment: v }); }} options={options("All Environments", ["Production", "Staging", "Development"])} /><FilterSelect label="Pipeline" value={pipeline} onChange={(v) => { setPipeline(v); setUrl({ pipeline: v }); }} options={options("All Pipelines", Array.from(new Set(validationChecks.map((c) => c.pipelineId))))} /><FilterSelect label="Check Type" value={checkType} onChange={(v) => { setCheckType(v); setUrl({ type: v }); }} options={options("All Check Types", ["Not Null", "Unique", "Accepted Values", "Range", "Freshness", "Row Count", "Referential Integrity", "Custom"])} /><Button variant="ghost" onClick={clearFilters}>Clear Filters</Button></div></Card>{filteredEmpty ? <div className="mt-7"><EmptyState title="No validation results match these filters" description="Try adjusting your search, status, pipeline, or time range." tone="neutral" action={<Button onClick={clearFilters}>Clear Filters</Button>} /></div> : <><Attention checks={filtered} open={open} /><Results checks={filtered} open={open} logs={logs} /></>}
-        <section className="mt-7"><h2 className="mb-3 text-[15px] font-semibold text-zinc-900">Recent Validation Activity</h2>{qa === "partial" ? <EmptyState title="Recent validation activity unavailable" description="Platform Code: VALIDATION_ACTIVITY_UNAVAILABLE" icon={<AlertTriangle className="h-4 w-4" />} tone="neutral" action={<Button onClick={() => qaSelect("mixed")}>Try Again</Button>} /> : <Card><ol className="p-4">{validationActivities.map((item, index) => <li key={item.time} className="relative flex gap-3 pb-5 last:pb-0">{index < validationActivities.length - 1 && <span className="absolute left-[5px] top-3 h-full w-px bg-zinc-200" />}<span className={`relative mt-1.5 h-2.5 w-2.5 rounded-full ring-4 ${item.tone === "error" ? "bg-rose-500 ring-rose-100" : "bg-amber-500 ring-amber-100"}`} /><div><button onClick={() => open(item.checkId)} className="text-xs font-semibold text-zinc-800 hover:text-indigo-700">{item.text}</button><p className="mt-1 font-mono text-[10px] text-zinc-500">{item.code}</p></div><time className="ml-auto text-[11px] text-zinc-400">{item.time}</time></li>)}</ol></Card>}</section></>}</div>;
+    if (qa === "error")
+        return (
+            <div className="animate-enter">
+                <PageHeader
+                    title="Validation"
+                    description="Review data-quality checks and investigate validation failures."
+                />
+                <Card>
+                    <div className="p-4">
+                        <OperationalStatus
+                            statusLabel="Failed"
+                            result={{
+                                status: "Error",
+                                platformCode: "VALIDATION_UNAVAILABLE",
+                                vendorCode: "503",
+                                message:
+                                    "The platform could not retrieve validation results.",
+                                recommendedAction:
+                                    "Try loading Validation again.",
+                            }}
+                            action={
+                                <Button onClick={() => qaSelect("mixed")}>
+                                    Try Again
+                                </Button>
+                            }
+                        />
+                    </div>
+                </Card>
+            </div>
+        );
+    const allPassing = qa === "passing";
+    const blocking =
+        qa === "blocking" ||
+        (!allPassing &&
+            base.some(
+                (c) => c.result === "Failed" && c.severity === "Blocking",
+            ));
+    const health = allPassing
+        ? {
+              status: "Success" as const,
+              label: "Healthy" as const,
+              platformCode: "VALIDATION_HEALTHY",
+              message: "All currently evaluated validation checks are passing.",
+              recommendedAction: "No recommended action required.",
+          }
+        : blocking
+          ? {
+                status: "Error" as const,
+                label: "Failed" as const,
+                platformCode: "VALIDATION_FAILURE",
+                message:
+                    "One blocking validation check failed and caused a pipeline execution to stop.",
+                recommendedAction:
+                    "Investigate the blocking validation failure.",
+            }
+          : {
+                status: "Warning" as const,
+                label: "Warning" as const,
+                platformCode: "VALIDATION_DEGRADED",
+                message:
+                    "2 validation checks currently exceed their configured warning thresholds.",
+                recommendedAction: "Review the failing checks below.",
+            };
+    const filteredEmpty =
+        qa === "filtered-empty" || (!filtered.length && base.length > 0);
+    const noRun = qa === "no-run";
+    return (
+        <div className="animate-enter">
+            <PageHeader
+                title="Validation"
+                description="Review data-quality checks and investigate validation failures."
+                action={
+                    <div className="flex flex-wrap items-center gap-2">
+                        {process.env.NODE_ENV === "development" && (
+                            <>
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                                    QA State
+                                </span>
+                                <FilterSelect
+                                    label="QA State"
+                                    value={qa}
+                                    onChange={qaSelect}
+                                    options={options("Mixed results", [
+                                        "passing",
+                                        "warning",
+                                        "blocking",
+                                        "empty",
+                                        "no-run",
+                                        "filtered-empty",
+                                        "loading",
+                                        "error",
+                                        "partial",
+                                        "stale",
+                                    ])}
+                                />
+                            </>
+                        )}
+                        <FilterSelect
+                            label="Time range"
+                            value={time}
+                            onChange={(v) => {
+                                setTime(v);
+                                setUrl({ time: v === "24h" ? null : v });
+                            }}
+                            options={times}
+                        />
+                        <span className="text-[11px] text-zinc-400">
+                            Last updated {updated}
+                        </span>
+                        <Button onClick={() => setUpdated("just now")}>
+                            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+                        </Button>
+                    </div>
+                }
+            />
+            <ScopeBanner
+                params={new URLSearchParams(searchParams.toString())}
+                clear={clearFilters}
+            />
+            {qa === "stale" && (
+                <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                        <AlertTriangle className="h-4 w-4" /> Validation data
+                        may be stale
+                    </p>
+                    <p className="mt-1 font-mono text-[10px] text-amber-700">
+                        VALIDATION_DATA_STALE
+                    </p>
+                    <p className="mt-2 text-xs text-amber-900">
+                        The latest validation evaluation completed 45 minutes
+                        ago. <strong>Last Evaluated:</strong> 7:55 PM
+                    </p>
+                    <p className="mt-1 text-xs text-amber-800">
+                        <strong>Recommended Action:</strong> Confirm the latest
+                        pipeline execution before relying on these results.
+                    </p>
+                </div>
+            )}
+            {qa === "empty" ? (
+                <EmptyState
+                    title="No validation checks configured"
+                    description="Validation results will appear here after checks are added to your pipelines."
+                    icon={<FileCheck2 className="h-4 w-4" />}
+                    tone="neutral"
+                    action={
+                        <Button onClick={() => router.push("/pipelines")}>
+                            View Pipelines
+                        </Button>
+                    }
+                />
+            ) : noRun ? (
+                <EmptyState
+                    title="No validation results for this run"
+                    description={`Validation was not executed during Run ${scopedRun || "#8F42A1"}.`}
+                    icon={<FileCheck2 className="h-4 w-4" />}
+                    tone="neutral"
+                />
+            ) : (
+                <>
+                    <Card
+                        title="Validation Health"
+                        description="Current data-quality evaluation across active checks."
+                    >
+                        <div className="p-4">
+                            <OperationalStatus
+                                result={health}
+                                statusLabel={health.label}
+                                details={[
+                                    {
+                                        label: "Last Evaluated",
+                                        value:
+                                            qa === "stale"
+                                                ? "7:55 PM"
+                                                : "8:34 PM",
+                                    },
+                                ]}
+                            />
+                        </div>
+                    </Card>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                        <MetricCard
+                            label="Active Checks"
+                            value="42"
+                            detail="Configured and enabled"
+                            icon={FileCheck2}
+                        />
+                        <MetricCard
+                            label="Passing"
+                            value={allPassing ? "42" : "38"}
+                            detail="Within threshold"
+                            icon={CheckCircle2}
+                            tone="positive"
+                        />
+                        <MetricCard
+                            label="Warning"
+                            value={
+                                allPassing ? "0" : qa === "blocking" ? "0" : "3"
+                            }
+                            detail="Pipeline continued"
+                            icon={CircleAlert}
+                            tone="warning"
+                        />
+                        <MetricCard
+                            label="Failed"
+                            value={blocking ? "1" : "0"}
+                            detail="Blocking impact"
+                            icon={ShieldAlert}
+                            tone={blocking ? "danger" : "neutral"}
+                        />
+                        <MetricCard
+                            label="Pass Rate"
+                            value={allPassing ? "100%" : "90.5%"}
+                            detail="Selected time range"
+                            icon={Activity}
+                            tone="positive"
+                        />
+                    </div>
+                    <Card className="mt-7">
+                        <div className="flex flex-col gap-2 p-3 xl:flex-row">
+                            <SearchField
+                                value={query}
+                                onChange={(v) => {
+                                    setQuery(v);
+                                    setUrl({ q: v || null });
+                                }}
+                                placeholder="Search validation checks..."
+                                className="flex-1"
+                            />
+                            <FilterSelect
+                                label="Result"
+                                value={result}
+                                onChange={(v) => {
+                                    setResult(v);
+                                    setUrl({ result: v });
+                                }}
+                                options={options("All Results", [
+                                    "Passed",
+                                    "Failed",
+                                    "Not Evaluated",
+                                ])}
+                            />
+                            <FilterSelect
+                                label="Severity"
+                                value={severity}
+                                onChange={(v) => {
+                                    setSeverity(v);
+                                    setUrl({ severity: v });
+                                }}
+                                options={options("All Severities", [
+                                    "Warning",
+                                    "Blocking",
+                                ])}
+                            />
+                            <FilterSelect
+                                label="Environment"
+                                value={environment}
+                                onChange={(v) => {
+                                    setEnvironment(v);
+                                    setUrl({ environment: v });
+                                }}
+                                options={options("All Environments", [
+                                    "Production",
+                                    "Staging",
+                                    "Development",
+                                ])}
+                            />
+                            <FilterSelect
+                                label="Pipeline"
+                                value={pipeline}
+                                onChange={(v) => {
+                                    setPipeline(v);
+                                    setUrl({ pipeline: v });
+                                }}
+                                options={options(
+                                    "All Pipelines",
+                                    Array.from(
+                                        new Set(
+                                            validationChecks.map(
+                                                (c) => c.pipelineId,
+                                            ),
+                                        ),
+                                    ),
+                                )}
+                            />
+                            <FilterSelect
+                                label="Check Type"
+                                value={checkType}
+                                onChange={(v) => {
+                                    setCheckType(v);
+                                    setUrl({ type: v });
+                                }}
+                                options={options("All Check Types", [
+                                    "Not Null",
+                                    "Unique",
+                                    "Accepted Values",
+                                    "Range",
+                                    "Freshness",
+                                    "Row Count",
+                                    "Referential Integrity",
+                                    "Custom",
+                                ])}
+                            />
+                            <Button variant="ghost" onClick={clearFilters}>
+                                Clear Filters
+                            </Button>
+                        </div>
+                    </Card>
+                    {filteredEmpty ? (
+                        <div className="mt-7">
+                            <EmptyState
+                                title="No validation results match these filters"
+                                description="Try adjusting your search, status, pipeline, or time range."
+                                tone="neutral"
+                                action={
+                                    <Button onClick={clearFilters}>
+                                        Clear Filters
+                                    </Button>
+                                }
+                            />
+                        </div>
+                    ) : (
+                        <>
+                            <Attention checks={filtered} open={open} />
+                            <Results
+                                checks={filtered}
+                                open={open}
+                                logs={logs}
+                                navigate={router.push}
+                            />
+                        </>
+                    )}
+                    <section className="mt-7">
+                        <h2 className="mb-3 text-[15px] font-semibold text-zinc-900">
+                            Recent Validation Activity
+                        </h2>
+                        {qa === "partial" ? (
+                            <EmptyState
+                                title="Recent validation activity unavailable"
+                                description="Platform Code: VALIDATION_ACTIVITY_UNAVAILABLE"
+                                icon={<AlertTriangle className="h-4 w-4" />}
+                                tone="neutral"
+                                action={
+                                    <Button onClick={() => qaSelect("mixed")}>
+                                        Try Again
+                                    </Button>
+                                }
+                            />
+                        ) : (
+                            <Card>
+                                <ol className="p-4">
+                                    {validationActivities.map((item, index) => (
+                                        <li
+                                            key={item.time}
+                                            className="relative flex gap-3 pb-5 last:pb-0"
+                                        >
+                                            {index <
+                                                validationActivities.length -
+                                                    1 && (
+                                                <span className="absolute left-[5px] top-3 h-full w-px bg-zinc-200" />
+                                            )}
+                                            <span
+                                                className={`relative mt-1.5 h-2.5 w-2.5 rounded-full ring-4 ${item.tone === "error" ? "bg-rose-500 ring-rose-100" : "bg-amber-500 ring-amber-100"}`}
+                                            />
+                                            <div>
+                                                <button
+                                                    onClick={() =>
+                                                        open(item.checkId)
+                                                    }
+                                                    className="text-xs font-semibold text-zinc-800 hover:text-indigo-700"
+                                                >
+                                                    {item.text}
+                                                </button>
+                                                <p className="mt-1 font-mono text-[10px] text-zinc-500">
+                                                    {item.code}
+                                                </p>
+                                            </div>
+                                            <time className="ml-auto text-[11px] text-zinc-400">
+                                                {item.time}
+                                            </time>
+                                        </li>
+                                    ))}
+                                </ol>
+                            </Card>
+                        )}
+                    </section>
+                </>
+            )}
+        </div>
+    );
 }
 
-export function ValidationPageSkeleton() { return <div className="space-y-7"><div className="flex justify-between"><div><Skeleton className="h-7 w-40" /><Skeleton className="mt-2 h-4 w-96" /></div><Skeleton className="h-9 w-64" /></div><Skeleton className="h-56" /><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-28" />)}</div><div className="flex gap-2"><Skeleton className="h-9 flex-1" />{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-28" />)}</div><Skeleton className="h-72" /><Skeleton className="h-96" /></div>; }
+export function ValidationPageSkeleton() {
+    return (
+        <div className="space-y-7">
+            <div className="flex justify-between">
+                <div>
+                    <Skeleton className="h-7 w-40" />
+                    <Skeleton className="mt-2 h-4 w-96" />
+                </div>
+                <Skeleton className="h-9 w-64" />
+            </div>
+            <Skeleton className="h-56" />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-28" />
+                ))}
+            </div>
+            <div className="flex gap-2">
+                <Skeleton className="h-9 flex-1" />
+                {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-9 w-28" />
+                ))}
+            </div>
+            <Skeleton className="h-72" />
+            <Skeleton className="h-96" />
+        </div>
+    );
+}

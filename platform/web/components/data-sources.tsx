@@ -2,28 +2,213 @@
 
 import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Boxes, Database, HardDrive, MoreHorizontal, Network, Plus, Search, Server, Warehouse } from "lucide-react";
-import { dataSources, sortDataSources, type DataSource, type DataSourceEnvironment, type DataSourceStatus, type DataSourceType } from "@/lib/data-sources-data";
-import { Button, EmptyState, ErrorState, FilterSelect, MetricCard, PageHeader as BasePageHeader, SearchField, Skeleton, StatusBadge } from "@/components/ui";
-import { isEnvironment, useEnvironmentContext } from "@/lib/environment-context";
+import {
+    AlertTriangle,
+    Boxes,
+    Database,
+    HardDrive,
+    MoreHorizontal,
+    Network,
+    Plus,
+    Search,
+    Server,
+    Warehouse,
+} from "lucide-react";
+import {
+    dataSources,
+    sortDataSources,
+    type DataSource,
+    type DataSourceEnvironment,
+    type DataSourceStatus,
+    type DataSourceType,
+} from "@/lib/data-sources-data";
+import {
+    Button,
+    EmptyState,
+    ErrorState,
+    FilterSelect,
+    MetricCard,
+    PageHeader as BasePageHeader,
+    SearchField,
+    Skeleton,
+    StatusBadge,
+} from "@/components/ui";
+import {
+    isEnvironment,
+    useEnvironmentContext,
+} from "@/lib/environment-context";
 
-const typeIcons: Record<DataSourceType, typeof Database> = { PostgreSQL: Database, Snowflake: Warehouse, MySQL: Database, Kafka: Network, "Amazon S3": HardDrive, "SQL Server": Server };
-const environmentDots: Record<DataSourceEnvironment, string> = { Production: "bg-emerald-500", Staging: "bg-blue-400", Development: "bg-zinc-400" };
+const typeIcons: Record<DataSourceType, typeof Database> = {
+    PostgreSQL: Database,
+    Snowflake: Warehouse,
+    MySQL: Database,
+    Kafka: Network,
+    "Amazon S3": HardDrive,
+    "SQL Server": Server,
+};
+const environmentDots: Record<DataSourceEnvironment, string> = {
+    Production: "bg-emerald-500",
+    Staging: "bg-blue-400",
+    Development: "bg-zinc-400",
+};
 
 function PageHeader(props: ComponentProps<typeof BasePageHeader>) {
     const { currentEnvironment } = useEnvironmentContext();
-    return <BasePageHeader {...props} eyebrow={<><Network className="h-3 w-3" /> {currentEnvironment} workspace</>} />;
+    return (
+        <BasePageHeader
+            {...props}
+            eyebrow={
+                <>
+                    <Network className="h-3 w-3" /> {currentEnvironment}{" "}
+                    workspace
+                </>
+            }
+        />
+    );
 }
 
 function SourceMetrics({ sources }: { sources: DataSource[] }) {
-    const healthy = sources.filter((source) => source.status === "Healthy").length;
-    const attention = sources.filter((source) => source.status === "Warning" || source.status === "Disconnected").length;
-    const pipelines = sources.reduce((total, source) => total + source.pipelines, 0);
-    return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Connected sources" value={String(sources.length)} detail="Across all environments" icon={Database} /><MetricCard label="Healthy" value={String(healthy)} detail="Checks passing normally" icon={Network} tone="positive" /><MetricCard label="Needs attention" value={String(attention)} detail="Warning or disconnected" icon={AlertTriangle} tone="warning" /><MetricCard label="Dependent pipelines" value={String(pipelines)} detail="Across connected sources" icon={Boxes} /></div>;
+    const healthy = sources.filter(
+        (source) => source.status === "Healthy",
+    ).length;
+    const attention = sources.filter(
+        (source) =>
+            source.status === "Warning" || source.status === "Disconnected",
+    ).length;
+    const pipelines = sources.reduce(
+        (total, source) => total + source.pipelines,
+        0,
+    );
+    return (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+                label="Connected sources"
+                value={String(sources.length)}
+                detail="Across all environments"
+                icon={Database}
+            />
+            <MetricCard
+                label="Healthy"
+                value={String(healthy)}
+                detail="Checks passing normally"
+                icon={Network}
+                tone="positive"
+            />
+            <MetricCard
+                label="Needs attention"
+                value={String(attention)}
+                detail="Warning or disconnected"
+                icon={AlertTriangle}
+                tone="warning"
+            />
+            <MetricCard
+                label="Dependent pipelines"
+                value={String(pipelines)}
+                detail="Across connected sources"
+                icon={Boxes}
+            />
+        </div>
+    );
 }
 
-function SourceTable({ sources, onSelect, onAction }: { sources: DataSource[]; onSelect: (source: DataSource) => void; onAction: (source: DataSource) => void }) {
-    return <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-card"><table className="w-full min-w-[900px] border-collapse text-left"><thead><tr className="border-b border-zinc-200 bg-zinc-50/70 text-[10px] font-semibold uppercase tracking-wider text-zinc-400"><th className="px-4 py-2.5">Source</th><th className="px-3 py-2.5">Type</th><th className="px-3 py-2.5">Status</th><th className="px-3 py-2.5 text-right">Pipelines</th><th className="px-3 py-2.5">Last Check</th><th className="px-3 py-2.5">Environment</th><th className="w-12 px-3 py-2.5"><span className="sr-only">Actions</span></th></tr></thead><tbody>{sources.map((source) => { const Icon = typeIcons[source.type]; return <tr key={source.id} tabIndex={0} aria-label={`Open ${source.name}`} onClick={() => onSelect(source)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(source); } }} className="group cursor-pointer border-b border-zinc-100 text-xs outline-none last:border-0 hover:bg-zinc-50 focus-visible:bg-indigo-50/50"><td className="px-4 py-3"><div className="flex items-center gap-2.5"><span className="grid h-7 w-7 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-400"><Icon className="h-3.5 w-3.5" /></span><span className="font-mono font-medium text-zinc-800">{source.name}</span></div></td><td className="px-3 py-3 text-zinc-600">{source.type}</td><td className="px-3 py-3"><StatusBadge status={source.status} /></td><td className="px-3 py-3 text-right font-medium tabular-nums text-zinc-700">{source.pipelines}</td><td className="whitespace-nowrap px-3 py-3 text-zinc-500">{source.lastCheck}</td><td className="px-3 py-3"><span className="inline-flex items-center gap-2 text-zinc-600"><span className={`h-1.5 w-1.5 rounded-full ${environmentDots[source.environment]}`} />{source.environment}</span></td><td className="px-3 py-3"><button aria-label={`Actions for ${source.name}`} title="Source actions" onClick={(event) => { event.stopPropagation(); onAction(source); }} onKeyDown={(event) => event.stopPropagation()} className="rounded p-1 text-zinc-400 opacity-70 hover:bg-zinc-200 hover:text-zinc-700 group-hover:opacity-100"><MoreHorizontal className="h-4 w-4" /></button></td></tr>; })}</tbody></table></div>;
+function SourceTable({
+    sources,
+    onSelect,
+    onAction,
+}: {
+    sources: DataSource[];
+    onSelect: (source: DataSource) => void;
+    onAction: (source: DataSource) => void;
+}) {
+    return (
+        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-card">
+            <table className="w-full min-w-[900px] border-collapse text-left">
+                <thead>
+                    <tr className="border-b border-zinc-200 bg-zinc-50/70 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                        <th className="px-4 py-2.5">Source</th>
+                        <th className="px-3 py-2.5">Type</th>
+                        <th className="px-3 py-2.5">Status</th>
+                        <th className="px-3 py-2.5 text-right">Pipelines</th>
+                        <th className="px-3 py-2.5">Last Check</th>
+                        <th className="px-3 py-2.5">Environment</th>
+                        <th className="w-12 px-3 py-2.5">
+                            <span className="sr-only">Actions</span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {sources.map((source) => {
+                        const Icon = typeIcons[source.type];
+                        return (
+                            <tr
+                                key={source.id}
+                                tabIndex={0}
+                                aria-label={`Open ${source.name}`}
+                                onClick={() => onSelect(source)}
+                                onKeyDown={(event) => {
+                                    if (
+                                        event.key === "Enter" ||
+                                        event.key === " "
+                                    ) {
+                                        event.preventDefault();
+                                        onSelect(source);
+                                    }
+                                }}
+                                className="group cursor-pointer border-b border-zinc-100 text-xs outline-none last:border-0 hover:bg-zinc-50 focus-visible:bg-indigo-50/50"
+                            >
+                                <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2.5">
+                                        <span className="grid h-7 w-7 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-400">
+                                            <Icon className="h-3.5 w-3.5" />
+                                        </span>
+                                        <span className="font-mono font-medium text-zinc-800">
+                                            {source.name}
+                                        </span>
+                                    </div>
+                                </td>
+                                <td className="px-3 py-3 text-zinc-600">
+                                    {source.type}
+                                </td>
+                                <td className="px-3 py-3">
+                                    <StatusBadge status={source.status} />
+                                </td>
+                                <td className="px-3 py-3 text-right font-medium tabular-nums text-zinc-700">
+                                    {source.pipelines}
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-3 text-zinc-500">
+                                    {source.lastCheck}
+                                </td>
+                                <td className="px-3 py-3">
+                                    <span className="inline-flex items-center gap-2 text-zinc-600">
+                                        <span
+                                            className={`h-1.5 w-1.5 rounded-full ${environmentDots[source.environment]}`}
+                                        />
+                                        {source.environment}
+                                    </span>
+                                </td>
+                                <td className="px-3 py-3">
+                                    <button
+                                        aria-label={`Actions for ${source.name}`}
+                                        title="Source actions"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            onAction(source);
+                                        }}
+                                        onKeyDown={(event) =>
+                                            event.stopPropagation()
+                                        }
+                                        className="rounded p-1 text-zinc-400 opacity-70 hover:bg-zinc-200 hover:text-zinc-700 group-hover:opacity-100"
+                                    >
+                                        <MoreHorizontal className="h-4 w-4" />
+                                    </button>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+    );
 }
 
 export function DataSourcesPage() {
@@ -33,22 +218,213 @@ export function DataSourcesPage() {
     const explicitEnvironment = searchParams.get("environment");
     const [query, setQuery] = useState("");
     const [status, setStatus] = useState<DataSourceStatus | "All">("All");
-    const [environment, setEnvironmentState] = useState<DataSourceEnvironment | "All">(isEnvironment(explicitEnvironment) ? explicitEnvironment : currentEnvironment);
+    const [environment, setEnvironmentState] = useState<
+        DataSourceEnvironment | "All"
+    >(
+        isEnvironment(explicitEnvironment)
+            ? explicitEnvironment
+            : currentEnvironment,
+    );
     const [loadError, setLoadError] = useState(false);
     const [notice, setNotice] = useState("");
-    const filteredSources = useMemo(() => sortDataSources(dataSources).filter((source) => (source.name.toLowerCase().includes(query.toLowerCase()) || source.type.toLowerCase().includes(query.toLowerCase())) && (status === "All" || source.status === status) && (environment === "All" || source.environment === environment)), [query, status, environment]);
-    useEffect(() => { if (!isEnvironment(explicitEnvironment)) setEnvironmentState(currentEnvironment); }, [currentEnvironment, explicitEnvironment]);
-    const setEnvironment = (value: DataSourceEnvironment | "All") => { setEnvironmentState(value); const next = new URLSearchParams(searchParams.toString()); if (value === "All") next.delete("environment"); else next.set("environment", value); router.replace(`/data-sources${next.size ? `?${next}` : ""}`, { scroll: false }); };
-    const clearFilters = () => { setQuery(""); setStatus("All"); setEnvironment(currentEnvironment); };
-    const showNotice = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 3000); };
+    const filteredSources = useMemo(
+        () =>
+            sortDataSources(dataSources).filter(
+                (source) =>
+                    (source.name.toLowerCase().includes(query.toLowerCase()) ||
+                        source.type
+                            .toLowerCase()
+                            .includes(query.toLowerCase())) &&
+                    (status === "All" || source.status === status) &&
+                    (environment === "All" ||
+                        source.environment === environment),
+            ),
+        [query, status, environment],
+    );
+    useEffect(() => {
+        if (!isEnvironment(explicitEnvironment))
+            setEnvironmentState(currentEnvironment);
+    }, [currentEnvironment, explicitEnvironment]);
+    const setEnvironment = (value: DataSourceEnvironment | "All") => {
+        setEnvironmentState(value);
+        const next = new URLSearchParams(searchParams.toString());
+        if (value === "All") next.delete("environment");
+        else next.set("environment", value);
+        router.replace(`/data-sources${next.size ? `?${next}` : ""}`, {
+            scroll: false,
+        });
+    };
+    const clearFilters = () => {
+        setQuery("");
+        setStatus("All");
+        setEnvironment(currentEnvironment);
+    };
+    const showNotice = (message: string) => {
+        setNotice(message);
+        window.setTimeout(() => setNotice(""), 3000);
+    };
 
-    return <div className="animate-enter"><PageHeader title="Data Sources" description="Manage systems that provide data to your pipelines." eyebrow={<><Network className="h-3 w-3" /> Production workspace</>} action={<Button variant="primary" disabled title="Adding data sources is not available in this MVP"><Plus className="h-3.5 w-3.5" /> Add Data Source</Button>} />
-        <SourceMetrics sources={dataSources} />
-        <section className="mt-7"><div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center"><SearchField value={query} onChange={setQuery} placeholder="Search by name or type..." className="sm:max-w-xs" /><FilterSelect label="Filter by status" value={status} onChange={(value) => setStatus(value as DataSourceStatus | "All")} options={[{ label: "All statuses", value: "All" }, { label: "Healthy", value: "Healthy" }, { label: "Warning", value: "Warning" }, { label: "Disconnected", value: "Disconnected" }, { label: "Disabled", value: "Disabled" }]} /><FilterSelect label="Filter by environment" value={environment} onChange={(value) => setEnvironment(value as DataSourceEnvironment | "All")} options={[{ label: "All environments", value: "All" }, { label: "Production", value: "Production" }, { label: "Staging", value: "Staging" }, { label: "Development", value: "Development" }]} /><span className="text-[11px] text-zinc-400 sm:ml-auto">{filteredSources.length} {filteredSources.length === 1 ? "source" : "sources"}</span></div>
-            {loadError ? <ErrorState title="Unable to load data sources." description="Something went wrong while fetching the source inventory." onRetry={() => setLoadError(false)} /> : !dataSources.length ? <EmptyState title="No data sources connected" description="Connect a source to start providing data to your pipelines." icon={<Database className="h-4 w-4" />} action={<Button variant="primary" disabled title="Adding data sources is not available in this MVP"><Plus className="h-3.5 w-3.5" /> Add Data Source</Button>} /> : !filteredSources.length ? <EmptyState title="No sources match your criteria" description="Try another search or clear the current filters." icon={<Search className="h-4 w-4" />} action={<button onClick={clearFilters} className="rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50">Clear filters</button>} /> : <SourceTable sources={filteredSources} onSelect={(source) => router.push(`/data-sources/${source.id}`)} onAction={(source) => router.push(`/data-sources/${source.id}`)} />}
-        </section><button className="sr-only" onClick={() => setLoadError(true)}>Show error state</button>{notice && <div role="status" className="fixed bottom-5 right-5 z-50 rounded-lg border border-zinc-200 bg-zinc-900 px-3 py-2 text-xs text-white shadow-panel">{notice}</div>}</div>;
+    return (
+        <div className="animate-enter">
+            <PageHeader
+                title="Data Sources"
+                description="Manage systems that provide data to your pipelines."
+                eyebrow={
+                    <>
+                        <Network className="h-3 w-3" /> Production workspace
+                    </>
+                }
+                action={
+                    <Button
+                        variant="primary"
+                        disabled
+                        title="Adding data sources is not available in this MVP"
+                    >
+                        <Plus className="h-3.5 w-3.5" /> Add Data Source
+                    </Button>
+                }
+            />
+            <SourceMetrics sources={dataSources} />
+            <section className="mt-7">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <SearchField
+                        value={query}
+                        onChange={setQuery}
+                        placeholder="Search by name or type..."
+                        className="sm:max-w-xs"
+                    />
+                    <FilterSelect
+                        label="Filter by status"
+                        value={status}
+                        onChange={(value) =>
+                            setStatus(value as DataSourceStatus | "All")
+                        }
+                        options={[
+                            { label: "All statuses", value: "All" },
+                            { label: "Healthy", value: "Healthy" },
+                            { label: "Warning", value: "Warning" },
+                            { label: "Disconnected", value: "Disconnected" },
+                            { label: "Disabled", value: "Disabled" },
+                        ]}
+                    />
+                    <FilterSelect
+                        label="Filter by environment"
+                        value={environment}
+                        onChange={(value) =>
+                            setEnvironment(
+                                value as DataSourceEnvironment | "All",
+                            )
+                        }
+                        options={[
+                            { label: "All environments", value: "All" },
+                            { label: "Production", value: "Production" },
+                            { label: "Staging", value: "Staging" },
+                            { label: "Development", value: "Development" },
+                        ]}
+                    />
+                    <span className="text-[11px] text-zinc-400 sm:ml-auto">
+                        {filteredSources.length}{" "}
+                        {filteredSources.length === 1 ? "source" : "sources"}
+                    </span>
+                </div>
+                {loadError ? (
+                    <ErrorState
+                        title="Unable to load data sources."
+                        description="Something went wrong while fetching the source inventory."
+                        onRetry={() => setLoadError(false)}
+                    />
+                ) : !dataSources.length ? (
+                    <EmptyState
+                        title="No data sources connected"
+                        description="Connect a source to start providing data to your pipelines."
+                        icon={<Database className="h-4 w-4" />}
+                        action={
+                            <Button
+                                variant="primary"
+                                disabled
+                                title="Adding data sources is not available in this MVP"
+                            >
+                                <Plus className="h-3.5 w-3.5" /> Add Data Source
+                            </Button>
+                        }
+                    />
+                ) : !filteredSources.length ? (
+                    <EmptyState
+                        title="No sources match your criteria"
+                        description="Try another search or clear the current filters."
+                        icon={<Search className="h-4 w-4" />}
+                        action={
+                            <button
+                                onClick={clearFilters}
+                                className="rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                            >
+                                Clear filters
+                            </button>
+                        }
+                    />
+                ) : (
+                    <SourceTable
+                        sources={filteredSources}
+                        onSelect={(source) =>
+                            router.push(`/data-sources/${source.id}`)
+                        }
+                        onAction={(source) =>
+                            router.push(`/data-sources/${source.id}`)
+                        }
+                    />
+                )}
+            </section>
+            {process.env.NODE_ENV === "development" && <button className="sr-only" onClick={() => setLoadError(true)}>
+                Show error state
+            </button>}
+            {notice && (
+                <div
+                    role="status"
+                    className="fixed bottom-5 right-5 z-50 rounded-lg border border-zinc-200 bg-zinc-900 px-3 py-2 text-xs text-white shadow-panel"
+                >
+                    {notice}
+                </div>
+            )}
+        </div>
+    );
 }
 
 export function DataSourcesSkeleton() {
-    return <div className="space-y-7"><div className="flex items-end justify-between"><div><Skeleton className="h-7 w-40" /><Skeleton className="mt-2 h-4 w-80" /></div><Skeleton className="h-9 w-36" /></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-28" />)}</div><div><div className="mb-3 flex gap-2"><Skeleton className="h-9 w-72" /><Skeleton className="h-9 w-28" /><Skeleton className="h-9 w-36" /></div><div className="overflow-hidden rounded-lg border border-zinc-200 bg-white"><Skeleton className="h-9 rounded-none" />{Array.from({ length: 6 }).map((_, index) => <div key={index} className="flex gap-8 border-t border-zinc-100 px-4 py-3"><Skeleton className="h-7 w-48" /><Skeleton className="h-7 w-24" /><Skeleton className="h-7 w-20" /><Skeleton className="h-7 flex-1" /></div>)}</div></div></div>;
+    return (
+        <div className="space-y-7">
+            <div className="flex items-end justify-between">
+                <div>
+                    <Skeleton className="h-7 w-40" />
+                    <Skeleton className="mt-2 h-4 w-80" />
+                </div>
+                <Skeleton className="h-9 w-36" />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                    <Skeleton key={index} className="h-28" />
+                ))}
+            </div>
+            <div>
+                <div className="mb-3 flex gap-2">
+                    <Skeleton className="h-9 w-72" />
+                    <Skeleton className="h-9 w-28" />
+                    <Skeleton className="h-9 w-36" />
+                </div>
+                <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+                    <Skeleton className="h-9 rounded-none" />
+                    {Array.from({ length: 6 }).map((_, index) => (
+                        <div
+                            key={index}
+                            className="flex gap-8 border-t border-zinc-100 px-4 py-3"
+                        >
+                            <Skeleton className="h-7 w-48" />
+                            <Skeleton className="h-7 w-24" />
+                            <Skeleton className="h-7 w-20" />
+                            <Skeleton className="h-7 flex-1" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 }

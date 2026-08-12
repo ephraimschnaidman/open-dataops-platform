@@ -108,9 +108,9 @@ export const activeIssues: ActiveIssue[] = [
 ];
 
 export const pipelineHealth: PipelineHealthRow[] = [
-    { id: "events-processing", name: "Events Processing", environment: "Production", status: "Failed", successRate: "82.4%", lastRun: "14 min ago", avgRuntime: "41s", schedule: "Continuous", platformCode: "PIPELINE_EXECUTION_FAILED" },
-    { id: "billing-reconciliation", name: "Billing Reconciliation", environment: "Production", status: "Warning", successRate: "96.2%", lastRun: "32 min ago", avgRuntime: "8m 41s", schedule: "Daily at 06:00", platformCode: "VALIDATION_CHECK_FAILED" },
-    { id: "customer-ingestion", name: "Customer Ingestion", environment: "Production", status: "Healthy", successRate: "99.6%", lastRun: "8 min ago", avgRuntime: "2m 14s", schedule: "Hourly" },
+    { id: "events-processing", name: "Events Processing", environment: "Production", status: "Failed", successRate: "82.4%", lastRun: "2 min ago", avgRuntime: "41s", schedule: "Continuous", platformCode: "PIPELINE_EXECUTION_FAILED" },
+    { id: "billing-reconciliation", name: "Billing Reconciliation", environment: "Production", status: "Warning", successRate: "96.2%", lastRun: "1 hr ago", avgRuntime: "8m 41s", schedule: "Daily at 06:00", platformCode: "VALIDATION_CHECK_FAILED" },
+    { id: "customer-ingestion", name: "Customer Ingestion", environment: "Production", status: "Healthy", successRate: "99.6%", lastRun: "11 min ago", avgRuntime: "2m 14s", schedule: "Hourly" },
     { id: "warehouse-sync", name: "Warehouse Sync", environment: "Production", status: "Healthy", successRate: "100%", lastRun: "12 min ago", avgRuntime: "4m 02s", schedule: "Every 15 min" },
     { id: "marketing-attribution", name: "Marketing Attribution", environment: "Staging", status: "Healthy", successRate: "99.1%", lastRun: "6 min ago", avgRuntime: "1m 47s", schedule: "Every 15 min" },
     { id: "legacy-reporting", name: "Legacy Reporting", environment: "Development", status: "Disabled", successRate: "—", lastRun: "4 days ago", avgRuntime: "—", schedule: "Paused" },

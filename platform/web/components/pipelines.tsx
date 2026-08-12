@@ -2,12 +2,49 @@
 
 import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, CircleCheck, CircleX, GitBranch, MoreHorizontal, Network, Plus } from "lucide-react";
-import { pipelines, pipelineMetrics, sortPipelines, type Pipeline, type PipelineEnvironment, type PipelineScheduleMode, type PipelineStatus } from "@/lib/pipelines-data";
-import { Button, EmptyState, ErrorState, FilterSelect, MetricCard, PageHeader as BasePageHeader, SearchField, Skeleton, StatusBadge } from "@/components/ui";
-import { ConfirmationDialog, DropdownMenu, Toast, type MenuItem } from "@/components/overlays";
-import { createConceptualManualRun, persistConceptualRetry } from "@/lib/mock-run-state";
-import { isEnvironment, useEnvironmentContext } from "@/lib/environment-context";
+import {
+    AlertTriangle,
+    CircleCheck,
+    CircleX,
+    GitBranch,
+    MoreHorizontal,
+    Network,
+    Plus,
+} from "lucide-react";
+import {
+    pipelines,
+    pipelineMetrics,
+    sortPipelines,
+    type Pipeline,
+    type PipelineEnvironment,
+    type PipelineScheduleMode,
+    type PipelineStatus,
+} from "@/lib/pipelines-data";
+import {
+    Button,
+    EmptyState,
+    ErrorState,
+    FilterSelect,
+    MetricCard,
+    PageHeader as BasePageHeader,
+    SearchField,
+    Skeleton,
+    StatusBadge,
+} from "@/components/ui";
+import {
+    ConfirmationDialog,
+    DropdownMenu,
+    Toast,
+    type MenuItem,
+} from "@/components/overlays";
+import {
+    createConceptualManualRun,
+    persistConceptualRetry,
+} from "@/lib/mock-run-state";
+import {
+    isEnvironment,
+    useEnvironmentContext,
+} from "@/lib/environment-context";
 
 interface ToastState {
     message: string;
@@ -17,21 +54,212 @@ interface ToastState {
 
 function PageHeader(props: ComponentProps<typeof BasePageHeader>) {
     const { currentEnvironment } = useEnvironmentContext();
-    return <BasePageHeader {...props} eyebrow={<><Network className="h-3 w-3" /> {currentEnvironment} workspace</>} />;
+    return (
+        <BasePageHeader
+            {...props}
+            eyebrow={
+                <>
+                    <Network className="h-3 w-3" /> {currentEnvironment}{" "}
+                    workspace
+                </>
+            }
+        />
+    );
 }
 
 function PipelineMetrics() {
-    return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Total Pipelines" value={String(pipelineMetrics.total)} detail="Across all environments" icon={GitBranch} /><MetricCard label="Healthy" value={String(pipelineMetrics.healthy)} detail="Enabled and operating normally" icon={CircleCheck} tone="positive" /><MetricCard label="Attention Needed" value={String(pipelineMetrics.attention)} detail="Warning or failed" icon={AlertTriangle} tone="warning" /><MetricCard label="Failed" value={String(pipelineMetrics.failed)} detail="Latest execution failed" icon={CircleX} tone="danger" /></div>;
+    return (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+                label="Total Pipelines"
+                value={String(pipelineMetrics.total)}
+                detail="Across all environments"
+                icon={GitBranch}
+            />
+            <MetricCard
+                label="Healthy"
+                value={String(pipelineMetrics.healthy)}
+                detail="Enabled and operating normally"
+                icon={CircleCheck}
+                tone="positive"
+            />
+            <MetricCard
+                label="Attention Needed"
+                value={String(pipelineMetrics.attention)}
+                detail="Warning or failed"
+                icon={AlertTriangle}
+                tone="warning"
+            />
+            <MetricCard
+                label="Failed"
+                value={String(pipelineMetrics.failed)}
+                detail="Latest execution failed"
+                icon={CircleX}
+                tone="danger"
+            />
+        </div>
+    );
 }
 
-function PipelineTable({ items, activeMenu, onMenuChange, onRun, onOpen, onPlaceholder }: { items: Pipeline[]; activeMenu: string | null; onMenuChange: (id: string | null) => void; onRun: (pipeline: Pipeline) => void; onOpen: (pipeline: Pipeline) => void; onPlaceholder: (message: string) => void }) {
+function PipelineTable({
+    items,
+    activeMenu,
+    onMenuChange,
+    onRun,
+    onOpen,
+    onPlaceholder,
+}: {
+    items: Pipeline[];
+    activeMenu: string | null;
+    onMenuChange: (id: string | null) => void;
+    onRun: (pipeline: Pipeline) => void;
+    onOpen: (pipeline: Pipeline) => void;
+    onPlaceholder: (message: string) => void;
+}) {
     const menuItems = (pipeline: Pipeline): MenuItem[] => [
         { label: "View details", onSelect: () => onOpen(pipeline) },
         { label: "Run now", onSelect: () => onRun(pipeline) },
-        { label: "View runs", onSelect: () => onPlaceholder(`/pipeline-runs?pipeline=${pipeline.id}`) },
-        { label: "View logs", onSelect: () => onPlaceholder(`/logs?${new URLSearchParams({ scope: "pipeline", pipeline: pipeline.id, environment: pipeline.environment, time: "24h" }).toString()}`) },
+        {
+            label: "View runs",
+            onSelect: () =>
+                onPlaceholder(`/pipeline-runs?pipeline=${pipeline.id}`),
+        },
+        {
+            label: "View logs",
+            onSelect: () =>
+                onPlaceholder(
+                    `/logs?${new URLSearchParams({ scope: "pipeline", pipeline: pipeline.id, environment: pipeline.environment, time: "24h" }).toString()}`,
+                ),
+        },
     ];
-    return <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-card"><table className="w-full min-w-[540px] border-collapse text-left"><thead><tr className="border-b border-zinc-200 bg-zinc-50/70 text-[10px] font-semibold uppercase tracking-wider text-zinc-400"><th className="px-4 py-2.5">Pipeline</th><th className="px-3 py-2.5">Status</th><th className="hidden px-3 py-2.5 sm:table-cell">Source</th><th className="hidden px-3 py-2.5 md:table-cell">Schedule</th><th className="px-3 py-2.5">Last Run</th><th className="hidden px-3 py-2.5 lg:table-cell">Next Run</th><th className="hidden px-3 py-2.5 xl:table-cell">Duration</th><th className="w-12 px-3 py-2.5"><span className="sr-only">Actions</span></th></tr></thead><tbody>{items.map((pipeline) => <tr key={pipeline.id} tabIndex={0} aria-label={`Open ${pipeline.name}`} onClick={() => onOpen(pipeline)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(pipeline); } }} className="group cursor-pointer border-b border-zinc-100 text-xs outline-none last:border-0 hover:bg-zinc-50 focus-visible:bg-indigo-50/50"><td className="px-4 py-3"><div className="flex min-w-[170px] items-center gap-2.5"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-400"><GitBranch className="h-3.5 w-3.5" /></span><span className="min-w-0"><span className="block truncate font-medium text-zinc-800">{pipeline.name}</span><span className="mt-0.5 block truncate font-mono text-[10px] text-zinc-400">{pipeline.technicalId}</span></span></div></td><td className="px-3 py-3"><StatusBadge status={pipeline.status} />{pipeline.operationalIssue && <span className="mt-1.5 block max-w-[170px] truncate font-mono text-[10px] text-zinc-500" title={pipeline.operationalIssue.platformCode}>{pipeline.operationalIssue.platformCode}</span>}</td><td className="hidden px-3 py-3 sm:table-cell"><span className="block whitespace-nowrap font-medium text-zinc-700">{pipeline.source.name}</span><span className="mt-0.5 block text-[10px] text-zinc-400">{pipeline.source.technology}</span></td><td className="hidden whitespace-nowrap px-3 py-3 text-zinc-600 md:table-cell">{pipeline.schedule}</td><td className="whitespace-nowrap px-3 py-3 text-zinc-500">{pipeline.lastRun}</td><td className="hidden whitespace-nowrap px-3 py-3 text-zinc-500 lg:table-cell">{pipeline.nextRun}</td><td className="hidden whitespace-nowrap px-3 py-3 tabular-nums text-zinc-600 xl:table-cell">{pipeline.duration}</td><td className="px-3 py-3" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><DropdownMenu open={activeMenu === pipeline.id} onOpenChange={(open) => onMenuChange(open ? pipeline.id : null)} items={menuItems(pipeline)}><button aria-label={`Actions for ${pipeline.name}`} aria-expanded={activeMenu === pipeline.id} onClick={() => onMenuChange(activeMenu === pipeline.id ? null : pipeline.id)} className="rounded p-1 text-zinc-400 opacity-70 hover:bg-zinc-200 hover:text-zinc-700 group-hover:opacity-100"><MoreHorizontal className="h-4 w-4" /></button></DropdownMenu></td></tr>)}</tbody></table></div>;
+    return (
+        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-card">
+            <table className="w-full min-w-[540px] border-collapse text-left">
+                <thead>
+                    <tr className="border-b border-zinc-200 bg-zinc-50/70 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                        <th className="px-4 py-2.5">Pipeline</th>
+                        <th className="px-3 py-2.5">Status</th>
+                        <th className="hidden px-3 py-2.5 sm:table-cell">
+                            Source
+                        </th>
+                        <th className="hidden px-3 py-2.5 md:table-cell">
+                            Schedule
+                        </th>
+                        <th className="px-3 py-2.5">Last Run</th>
+                        <th className="hidden px-3 py-2.5 lg:table-cell">
+                            Next Run
+                        </th>
+                        <th className="hidden px-3 py-2.5 xl:table-cell">
+                            Duration
+                        </th>
+                        <th className="w-12 px-3 py-2.5">
+                            <span className="sr-only">Actions</span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {items.map((pipeline) => (
+                        <tr
+                            key={pipeline.id}
+                            tabIndex={0}
+                            aria-label={`Open ${pipeline.name}`}
+                            onClick={() => onOpen(pipeline)}
+                            onKeyDown={(event) => {
+                                if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                ) {
+                                    event.preventDefault();
+                                    onOpen(pipeline);
+                                }
+                            }}
+                            className="group cursor-pointer border-b border-zinc-100 text-xs outline-none last:border-0 hover:bg-zinc-50 focus-visible:bg-indigo-50/50"
+                        >
+                            <td className="px-4 py-3">
+                                <div className="flex min-w-[170px] items-center gap-2.5">
+                                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-400">
+                                        <GitBranch className="h-3.5 w-3.5" />
+                                    </span>
+                                    <span className="min-w-0">
+                                        <span className="block truncate font-medium text-zinc-800">
+                                            {pipeline.name}
+                                        </span>
+                                        <span className="mt-0.5 block truncate font-mono text-[10px] text-zinc-400">
+                                            {pipeline.technicalId}
+                                        </span>
+                                    </span>
+                                </div>
+                            </td>
+                            <td className="px-3 py-3">
+                                <StatusBadge status={pipeline.status} />
+                                {pipeline.operationalIssue && (
+                                    <span
+                                        className="mt-1.5 block max-w-[170px] truncate font-mono text-[10px] text-zinc-500"
+                                        title={
+                                            pipeline.operationalIssue
+                                                .platformCode
+                                        }
+                                    >
+                                        {pipeline.operationalIssue.platformCode}
+                                    </span>
+                                )}
+                            </td>
+                            <td className="hidden px-3 py-3 sm:table-cell">
+                                <span className="block whitespace-nowrap font-medium text-zinc-700">
+                                    {pipeline.source.name}
+                                </span>
+                                <span className="mt-0.5 block text-[10px] text-zinc-400">
+                                    {pipeline.source.technology}
+                                </span>
+                            </td>
+                            <td className="hidden whitespace-nowrap px-3 py-3 text-zinc-600 md:table-cell">
+                                {pipeline.schedule}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-3 text-zinc-500">
+                                {pipeline.lastRun}
+                            </td>
+                            <td className="hidden whitespace-nowrap px-3 py-3 text-zinc-500 lg:table-cell">
+                                {pipeline.nextRun}
+                            </td>
+                            <td className="hidden whitespace-nowrap px-3 py-3 tabular-nums text-zinc-600 xl:table-cell">
+                                {pipeline.duration}
+                            </td>
+                            <td
+                                className="px-3 py-3"
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => event.stopPropagation()}
+                            >
+                                <DropdownMenu
+                                    open={activeMenu === pipeline.id}
+                                    onOpenChange={(open) =>
+                                        onMenuChange(open ? pipeline.id : null)
+                                    }
+                                    items={menuItems(pipeline)}
+                                >
+                                    <button
+                                        aria-label={`Actions for ${pipeline.name}`}
+                                        aria-expanded={
+                                            activeMenu === pipeline.id
+                                        }
+                                        onClick={() =>
+                                            onMenuChange(
+                                                activeMenu === pipeline.id
+                                                    ? null
+                                                    : pipeline.id,
+                                            )
+                                        }
+                                        className="rounded p-1 text-zinc-400 opacity-70 hover:bg-zinc-200 hover:text-zinc-700 group-hover:opacity-100"
+                                    >
+                                        <MoreHorizontal className="h-4 w-4" />
+                                    </button>
+                                </DropdownMenu>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
 }
 
 export function PipelinesPage() {
@@ -41,22 +269,270 @@ export function PipelinesPage() {
     const explicitEnvironment = searchParams.get("environment");
     const [query, setQuery] = useState("");
     const [status, setStatus] = useState<PipelineStatus | "All">("All");
-    const [environment, setEnvironmentState] = useState<PipelineEnvironment | "All">(isEnvironment(explicitEnvironment) ? explicitEnvironment : currentEnvironment);
-    const [schedule, setSchedule] = useState<PipelineScheduleMode | "All">("All");
+    const [environment, setEnvironmentState] = useState<
+        PipelineEnvironment | "All"
+    >(
+        isEnvironment(explicitEnvironment)
+            ? explicitEnvironment
+            : currentEnvironment,
+    );
+    const [schedule, setSchedule] = useState<PipelineScheduleMode | "All">(
+        "All",
+    );
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [runPipeline, setRunPipeline] = useState<Pipeline | null>(null);
     const [toast, setToast] = useState<ToastState | null>(null);
     const [loadError, setLoadError] = useState(false);
-    const filtered = useMemo(() => sortPipelines(pipelines).filter((pipeline) => { const term = query.toLowerCase(); return (pipeline.name.toLowerCase().includes(term) || pipeline.source.name.toLowerCase().includes(term) || pipeline.destination?.toLowerCase().includes(term)) && (status === "All" || pipeline.status === status) && (environment === "All" || pipeline.environment === environment) && (schedule === "All" || pipeline.scheduleMode === schedule); }), [query, status, environment, schedule]);
-    useEffect(() => { if (!isEnvironment(explicitEnvironment)) setEnvironmentState(currentEnvironment); }, [currentEnvironment, explicitEnvironment]);
-    const setEnvironment = (value: PipelineEnvironment | "All") => { setEnvironmentState(value); const next = new URLSearchParams(searchParams.toString()); if (value === "All") next.delete("environment"); else next.set("environment", value); router.replace(`/pipelines${next.size ? `?${next}` : ""}`, { scroll: false }); };
-    const clearFilters = () => { setQuery(""); setStatus("All"); setEnvironment(currentEnvironment); setSchedule("All"); };
-    const placeholder = (message: string) => { if (message.startsWith("/")) { router.push(message); return; } setToast({ message, tone: "neutral" }); };
-    const confirmRun = () => { const pipeline = runPipeline; setRunPipeline(null); if (!pipeline) return; const run = createConceptualManualRun(pipeline.id, pipeline.name); persistConceptualRetry(run); setToast({ message: `Pipeline execution started as ${run.id}`, tone: "success", action: { label: "View Runs", onSelect: () => router.push(`/pipeline-runs?pipeline=${pipeline.id}&status=Running`) } }); };
+    const filtered = useMemo(
+        () =>
+            sortPipelines(pipelines).filter((pipeline) => {
+                const term = query.toLowerCase();
+                return (
+                    (pipeline.name.toLowerCase().includes(term) ||
+                        pipeline.source.name.toLowerCase().includes(term) ||
+                        pipeline.destination?.toLowerCase().includes(term)) &&
+                    (status === "All" || pipeline.status === status) &&
+                    (environment === "All" ||
+                        pipeline.environment === environment) &&
+                    (schedule === "All" || pipeline.scheduleMode === schedule)
+                );
+            }),
+        [query, status, environment, schedule],
+    );
+    useEffect(() => {
+        if (!isEnvironment(explicitEnvironment))
+            setEnvironmentState(currentEnvironment);
+    }, [currentEnvironment, explicitEnvironment]);
+    const setEnvironment = (value: PipelineEnvironment | "All") => {
+        setEnvironmentState(value);
+        const next = new URLSearchParams(searchParams.toString());
+        if (value === "All") next.delete("environment");
+        else next.set("environment", value);
+        router.replace(`/pipelines${next.size ? `?${next}` : ""}`, {
+            scroll: false,
+        });
+    };
+    const clearFilters = () => {
+        setQuery("");
+        setStatus("All");
+        setEnvironment(currentEnvironment);
+        setSchedule("All");
+    };
+    const placeholder = (message: string) => {
+        if (message.startsWith("/")) {
+            router.push(message);
+            return;
+        }
+        setToast({ message, tone: "neutral" });
+    };
+    const confirmRun = () => {
+        const pipeline = runPipeline;
+        setRunPipeline(null);
+        if (!pipeline) return;
+        const run = createConceptualManualRun(pipeline.id, pipeline.name);
+        persistConceptualRetry(run);
+        setToast({
+            message: `Pipeline execution started as ${run.id}`,
+            tone: "success",
+            action: {
+                label: "View Runs",
+                onSelect: () =>
+                    router.push(
+                        `/pipeline-runs?pipeline=${pipeline.id}&status=Running`,
+                    ),
+            },
+        });
+    };
 
-    return <div className="animate-enter"><PageHeader title="Pipelines" description="Manage, run, and monitor your data pipelines." eyebrow={<><Network className="h-3 w-3" /> Production workspace</>} action={<Button variant="primary" disabled title="Pipeline creation is not available in this MVP"><Plus className="h-3.5 w-3.5" /> Create Pipeline</Button>} /><PipelineMetrics /><section className="mt-7"><div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center"><SearchField value={query} onChange={setQuery} placeholder="Search pipelines..." className="lg:max-w-xs" /><FilterSelect label="Filter by status" value={status} onChange={(value) => setStatus(value as PipelineStatus | "All")} options={[{ label: "All statuses", value: "All" }, { label: "Healthy", value: "Healthy" }, { label: "Warning", value: "Warning" }, { label: "Failed", value: "Failed" }, { label: "Running", value: "Running" }, { label: "Disabled", value: "Disabled" }]} /><FilterSelect label="Filter by environment" value={environment} onChange={(value) => setEnvironment(value as PipelineEnvironment | "All")} options={[{ label: "All environments", value: "All" }, { label: "Production", value: "Production" }, { label: "Staging", value: "Staging" }, { label: "Development", value: "Development" }]} /><FilterSelect label="Filter by schedule" value={schedule} onChange={(value) => setSchedule(value as PipelineScheduleMode | "All")} options={[{ label: "All schedules", value: "All" }, { label: "Scheduled", value: "Scheduled" }, { label: "Manual", value: "Manual" }]} /><span className="text-[11px] text-zinc-400 lg:ml-auto">{filtered.length} {filtered.length === 1 ? "pipeline" : "pipelines"}</span></div>{loadError ? <ErrorState title="Pipelines couldn't be loaded" description="We couldn't retrieve your pipelines." actionLabel="Try Again" technicalDetails={[{ label: "Platform Code", value: "PIPELINE_LIST_UNAVAILABLE" }, { label: "Vendor/HTTP Code", value: "503" }]} onRetry={() => setLoadError(false)} /> : !pipelines.length ? <EmptyState title="Create your first pipeline" description="Connect a source to a repeatable workflow for ingestion, transformation, and validation." icon={<GitBranch className="h-4 w-4" />} tone="neutral" action={<Button variant="primary" disabled title="Pipeline creation is not available in this MVP"><Plus className="h-3.5 w-3.5" /> Create Pipeline</Button>} /> : !filtered.length ? <EmptyState title="No pipelines match your filters" description="Try adjusting your search or filters." icon={<GitBranch className="h-4 w-4" />} tone="neutral" action={<Button onClick={clearFilters}>Clear Filters</Button>} /> : <PipelineTable items={filtered} activeMenu={activeMenu} onMenuChange={setActiveMenu} onRun={setRunPipeline} onOpen={(pipeline) => router.push(`/pipelines/${pipeline.id}`)} onPlaceholder={placeholder} />}</section><button className="sr-only" onClick={() => setLoadError(true)}>Show pipeline list error</button><ConfirmationDialog open={Boolean(runPipeline)} title={`Run ${runPipeline?.name ?? "pipeline"} now?`} description="This will start a manual execution outside its normal schedule." confirmLabel="Run Pipeline" onCancel={() => setRunPipeline(null)} onConfirm={confirmRun} />{toast && <Toast message={toast.message} tone={toast.tone} action={toast.action} onClose={() => setToast(null)} />}</div>;
+    return (
+        <div className="animate-enter">
+            <PageHeader
+                title="Pipelines"
+                description="Manage, run, and monitor your data pipelines."
+                eyebrow={
+                    <>
+                        <Network className="h-3 w-3" /> Production workspace
+                    </>
+                }
+                action={
+                    <Button
+                        variant="primary"
+                        disabled
+                        title="Pipeline creation is not available in this MVP"
+                    >
+                        <Plus className="h-3.5 w-3.5" /> Create Pipeline
+                    </Button>
+                }
+            />
+            <PipelineMetrics />
+            <section className="mt-7">
+                <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
+                    <SearchField
+                        value={query}
+                        onChange={setQuery}
+                        placeholder="Search pipelines..."
+                        className="lg:max-w-xs"
+                    />
+                    <FilterSelect
+                        label="Filter by status"
+                        value={status}
+                        onChange={(value) =>
+                            setStatus(value as PipelineStatus | "All")
+                        }
+                        options={[
+                            { label: "All statuses", value: "All" },
+                            { label: "Healthy", value: "Healthy" },
+                            { label: "Warning", value: "Warning" },
+                            { label: "Failed", value: "Failed" },
+                            { label: "Running", value: "Running" },
+                            { label: "Disabled", value: "Disabled" },
+                        ]}
+                    />
+                    <FilterSelect
+                        label="Filter by environment"
+                        value={environment}
+                        onChange={(value) =>
+                            setEnvironment(value as PipelineEnvironment | "All")
+                        }
+                        options={[
+                            { label: "All environments", value: "All" },
+                            { label: "Production", value: "Production" },
+                            { label: "Staging", value: "Staging" },
+                            { label: "Development", value: "Development" },
+                        ]}
+                    />
+                    <FilterSelect
+                        label="Filter by schedule"
+                        value={schedule}
+                        onChange={(value) =>
+                            setSchedule(value as PipelineScheduleMode | "All")
+                        }
+                        options={[
+                            { label: "All schedules", value: "All" },
+                            { label: "Scheduled", value: "Scheduled" },
+                            { label: "Manual", value: "Manual" },
+                        ]}
+                    />
+                    <span className="text-[11px] text-zinc-400 lg:ml-auto">
+                        {filtered.length}{" "}
+                        {filtered.length === 1 ? "pipeline" : "pipelines"}
+                    </span>
+                </div>
+                {loadError ? (
+                    <ErrorState
+                        title="Pipelines couldn't be loaded"
+                        description="We couldn't retrieve your pipelines."
+                        actionLabel="Try Again"
+                        technicalDetails={[
+                            {
+                                label: "Platform Code",
+                                value: "PIPELINE_LIST_UNAVAILABLE",
+                            },
+                            { label: "Vendor/HTTP Code", value: "503" },
+                        ]}
+                        onRetry={() => setLoadError(false)}
+                    />
+                ) : !pipelines.length ? (
+                    <EmptyState
+                        title="Create your first pipeline"
+                        description="Connect a source to a repeatable workflow for ingestion, transformation, and validation."
+                        icon={<GitBranch className="h-4 w-4" />}
+                        tone="neutral"
+                        action={
+                            <Button
+                                variant="primary"
+                                disabled
+                                title="Pipeline creation is not available in this MVP"
+                            >
+                                <Plus className="h-3.5 w-3.5" /> Create Pipeline
+                            </Button>
+                        }
+                    />
+                ) : !filtered.length ? (
+                    <EmptyState
+                        title="No pipelines match your filters"
+                        description="Try adjusting your search or filters."
+                        icon={<GitBranch className="h-4 w-4" />}
+                        tone="neutral"
+                        action={
+                            <Button onClick={clearFilters}>
+                                Clear Filters
+                            </Button>
+                        }
+                    />
+                ) : (
+                    <PipelineTable
+                        items={filtered}
+                        activeMenu={activeMenu}
+                        onMenuChange={setActiveMenu}
+                        onRun={setRunPipeline}
+                        onOpen={(pipeline) =>
+                            router.push(`/pipelines/${pipeline.id}`)
+                        }
+                        onPlaceholder={placeholder}
+                    />
+                )}
+            </section>
+            {process.env.NODE_ENV === "development" && <button className="sr-only" onClick={() => setLoadError(true)}>
+                Show pipeline list error
+            </button>}
+            <ConfirmationDialog
+                open={Boolean(runPipeline)}
+                title={`Run ${runPipeline?.name ?? "pipeline"} now?`}
+                description="This will start a manual execution outside its normal schedule."
+                confirmLabel="Run Pipeline"
+                onCancel={() => setRunPipeline(null)}
+                onConfirm={confirmRun}
+            />
+            {toast && (
+                <Toast
+                    message={toast.message}
+                    tone={toast.tone}
+                    action={toast.action}
+                    onClose={() => setToast(null)}
+                />
+            )}
+        </div>
+    );
 }
 
 export function PipelinesSkeleton() {
-    return <div className="space-y-7"><div className="flex items-end justify-between gap-4"><div><Skeleton className="h-7 w-36" /><Skeleton className="mt-2 h-4 w-72" /></div><Skeleton className="h-9 w-36" /></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-28" />)}</div><div><div className="mb-3 flex gap-2"><Skeleton className="h-9 w-72" /><Skeleton className="h-9 w-28" /><Skeleton className="h-9 w-36" /><Skeleton className="h-9 w-28" /></div><div className="overflow-hidden rounded-lg border border-zinc-200 bg-white"><Skeleton className="h-9 rounded-none" />{Array.from({ length: 7 }).map((_, index) => <div key={index} className="flex gap-8 border-t border-zinc-100 px-4 py-3"><Skeleton className="h-9 w-52" /><Skeleton className="h-9 w-28" /><Skeleton className="h-9 w-32" /><Skeleton className="h-9 flex-1" /></div>)}</div></div></div>;
+    return (
+        <div className="space-y-7">
+            <div className="flex items-end justify-between gap-4">
+                <div>
+                    <Skeleton className="h-7 w-36" />
+                    <Skeleton className="mt-2 h-4 w-72" />
+                </div>
+                <Skeleton className="h-9 w-36" />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                    <Skeleton key={index} className="h-28" />
+                ))}
+            </div>
+            <div>
+                <div className="mb-3 flex gap-2">
+                    <Skeleton className="h-9 w-72" />
+                    <Skeleton className="h-9 w-28" />
+                    <Skeleton className="h-9 w-36" />
+                    <Skeleton className="h-9 w-28" />
+                </div>
+                <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+                    <Skeleton className="h-9 rounded-none" />
+                    {Array.from({ length: 7 }).map((_, index) => (
+                        <div
+                            key={index}
+                            className="flex gap-8 border-t border-zinc-100 px-4 py-3"
+                        >
+                            <Skeleton className="h-9 w-52" />
+                            <Skeleton className="h-9 w-28" />
+                            <Skeleton className="h-9 w-32" />
+                            <Skeleton className="h-9 flex-1" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 }

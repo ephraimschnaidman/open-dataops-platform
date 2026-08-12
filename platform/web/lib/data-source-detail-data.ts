@@ -1,6 +1,6 @@
 import { dataSources, type DataSource } from "@/lib/data-sources-data";
 import type { OperationalResult } from "@/lib/operational-status";
-import { pipelines } from "@/lib/pipelines-data";
+import { pipelines, type PipelineStatus } from "@/lib/pipelines-data";
 
 export interface ConfigurationField {
     label: string;
@@ -11,7 +11,7 @@ export interface ConfigurationField {
 export interface ConnectedPipeline {
     id: string;
     name: string;
-    status: "Success" | "Running" | "Failed";
+    status: PipelineStatus;
     schedule: string;
     lastRun: string;
 }
@@ -63,7 +63,7 @@ function pipelinesFor(source: DataSource): ConnectedPipeline[] {
     return pipelines.filter((pipeline) => pipeline.source.name === source.name).map((pipeline) => ({
         id: pipeline.id,
         name: pipeline.name,
-        status: pipeline.status === "Running" ? "Running" : pipeline.status === "Failed" || pipeline.status === "Warning" ? "Failed" : "Success",
+        status: pipeline.status,
         schedule: pipeline.schedule,
         lastRun: pipeline.lastRun,
     }));
