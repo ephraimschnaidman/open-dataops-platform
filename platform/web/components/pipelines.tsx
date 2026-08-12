@@ -1,17 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type ComponentProps } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, CircleCheck, CircleX, GitBranch, MoreHorizontal, Network, Plus } from "lucide-react";
 import { pipelines, pipelineMetrics, sortPipelines, type Pipeline, type PipelineEnvironment, type PipelineScheduleMode, type PipelineStatus } from "@/lib/pipelines-data";
-import { Button, EmptyState, ErrorState, FilterSelect, MetricCard, PageHeader, SearchField, Skeleton, StatusBadge } from "@/components/ui";
+import { Button, EmptyState, ErrorState, FilterSelect, MetricCard, PageHeader as BasePageHeader, SearchField, Skeleton, StatusBadge } from "@/components/ui";
 import { ConfirmationDialog, DropdownMenu, Toast, type MenuItem } from "@/components/overlays";
 import { createConceptualManualRun, persistConceptualRetry } from "@/lib/mock-run-state";
+import { isEnvironment, useEnvironmentContext } from "@/lib/environment-context";
 
 interface ToastState {
     message: string;
     tone: "success" | "neutral";
     action?: { label: string; onSelect: () => void };
+}
+
+function PageHeader(props: ComponentProps<typeof BasePageHeader>) {
+    const { currentEnvironment } = useEnvironmentContext();
+    return <BasePageHeader {...props} eyebrow={<><Network className="h-3 w-3" /> {currentEnvironment} workspace</>} />;
 }
 
 function PipelineMetrics() {
@@ -30,16 +36,21 @@ function PipelineTable({ items, activeMenu, onMenuChange, onRun, onOpen, onPlace
 
 export function PipelinesPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const { currentEnvironment } = useEnvironmentContext();
+    const explicitEnvironment = searchParams.get("environment");
     const [query, setQuery] = useState("");
     const [status, setStatus] = useState<PipelineStatus | "All">("All");
-    const [environment, setEnvironment] = useState<PipelineEnvironment | "All">("All");
+    const [environment, setEnvironmentState] = useState<PipelineEnvironment | "All">(isEnvironment(explicitEnvironment) ? explicitEnvironment : currentEnvironment);
     const [schedule, setSchedule] = useState<PipelineScheduleMode | "All">("All");
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [runPipeline, setRunPipeline] = useState<Pipeline | null>(null);
     const [toast, setToast] = useState<ToastState | null>(null);
     const [loadError, setLoadError] = useState(false);
     const filtered = useMemo(() => sortPipelines(pipelines).filter((pipeline) => { const term = query.toLowerCase(); return (pipeline.name.toLowerCase().includes(term) || pipeline.source.name.toLowerCase().includes(term) || pipeline.destination?.toLowerCase().includes(term)) && (status === "All" || pipeline.status === status) && (environment === "All" || pipeline.environment === environment) && (schedule === "All" || pipeline.scheduleMode === schedule); }), [query, status, environment, schedule]);
-    const clearFilters = () => { setQuery(""); setStatus("All"); setEnvironment("All"); setSchedule("All"); };
+    useEffect(() => { if (!isEnvironment(explicitEnvironment)) setEnvironmentState(currentEnvironment); }, [currentEnvironment, explicitEnvironment]);
+    const setEnvironment = (value: PipelineEnvironment | "All") => { setEnvironmentState(value); const next = new URLSearchParams(searchParams.toString()); if (value === "All") next.delete("environment"); else next.set("environment", value); router.replace(`/pipelines${next.size ? `?${next}` : ""}`, { scroll: false }); };
+    const clearFilters = () => { setQuery(""); setStatus("All"); setEnvironment(currentEnvironment); setSchedule("All"); };
     const placeholder = (message: string) => { if (message.startsWith("/")) { router.push(message); return; } setToast({ message, tone: "neutral" }); };
     const confirmRun = () => { const pipeline = runPipeline; setRunPipeline(null); if (!pipeline) return; const run = createConceptualManualRun(pipeline.id, pipeline.name); persistConceptualRetry(run); setToast({ message: `Pipeline execution started as ${run.id}`, tone: "success", action: { label: "View Runs", onSelect: () => router.push(`/pipeline-runs?pipeline=${pipeline.id}&status=Running`) } }); };
 

@@ -8,6 +8,7 @@ import { ActualExpectedComparison, ValidationResultBadge, ValidationSeverityBadg
 import { Breadcrumbs, Button, Card, ErrorState, FilterSelect, KeyValueGrid, PageHeader, Skeleton, StatusBadge, TechnicalDetails } from "@/components/ui";
 import { WAREHOUSE_CUSTOMER_CHECK_ID, type ValidationCheck } from "@/lib/validation-data";
 import { safeInternalReturnTo } from "@/lib/navigation-context";
+import { getDevelopmentQaParam, isDevelopmentQaEnabled } from "@/lib/development-qa";
 
 function SampleRecords({ check, unavailable, retry }: { check: ValidationCheck; unavailable: boolean; retry: () => void }) {
     if (!check.samples) return null;
@@ -18,12 +19,12 @@ function SampleRecords({ check, unavailable, retry }: { check: ValidationCheck; 
 
 export function ValidationDetailPage({ check }: { check: ValidationCheck }) {
     const router = useRouter(); const params = useSearchParams();
-    const [sampleUnavailable, setSampleUnavailable] = useState(params.get("qa") === "sample-error");
+    const [sampleUnavailable, setSampleUnavailable] = useState(getDevelopmentQaParam(params) === "sample-error");
     const [backHref, setBackHref] = useState("/validation");
     useEffect(() => setBackHref(safeInternalReturnTo(params.get("returnTo"), "/validation")), [params]);
     const viewRun = () => router.push(`/pipeline-runs/${check.runId}`);
     const viewLogs = () => router.push(`/logs?${new URLSearchParams({ scope: "validation", pipeline: check.pipelineId, run: check.runId, stage: "Validate", code: check.platformCode, environment: check.environment, time: "24h" }).toString()}`);
-    const setQa = (value: string) => { if (value === "sample-error") setSampleUnavailable(true); else { setSampleUnavailable(false); if (value !== "default") router.push(`/validation/${value}`); } };
+    const setQa = (value: string) => { if (!isDevelopmentQaEnabled) return; if (value === "sample-error") setSampleUnavailable(true); else { setSampleUnavailable(false); if (value !== "default") router.push(`/validation/${value}`); } };
     const isExecutionError = check.result === "Not Evaluated" && check.operationalStatus === "Error";
     const menu = [{ label: "View Pipeline", onSelect: () => router.push(`/pipelines/${check.pipelineId}`) }, { label: "View Validation Logs", onSelect: viewLogs }];
     return <div className="animate-enter"><Breadcrumbs items={[{ label: "Validation", href: backHref }, { label: check.name }]} /><PageHeader title={check.name} description={`${check.pipeline} · ${check.dataset}${check.column ? `.${check.column}` : ""}`} eyebrow={<><ValidationResultBadge result={check.result} /><ValidationSeverityBadge severity={check.severity} />{isExecutionError && <StatusBadge status="Error" />}</>} action={<div className="flex flex-wrap items-center gap-2">{process.env.NODE_ENV === "development" && <><span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">QA State</span><FilterSelect label="QA State" value={sampleUnavailable ? "sample-error" : "default"} onChange={setQa} options={[{ label: "Current detail", value: "default" }, { label: "Passed detail", value: "customer-id-not-null" }, { label: "Warning detail", value: "customer-email-null-rate" }, { label: "Blocking detail", value: "order-id-unique" }, { label: "Execution failure", value: WAREHOUSE_CUSTOMER_CHECK_ID }, { label: "Sample section error", value: "sample-error" }]} /></>}<Button onClick={viewRun}>{check.result === "Failed" && check.severity === "Blocking" ? "View Failed Run" : "View Run"}</Button><Button onClick={viewLogs}><FileText className="h-3.5 w-3.5" /> View Logs</Button><DropdownMenu items={menu}><Button aria-label="More validation actions" className="px-2.5"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenu></div>} />

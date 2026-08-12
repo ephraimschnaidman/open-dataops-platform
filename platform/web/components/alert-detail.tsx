@@ -7,6 +7,7 @@ import { AlertStatusBadge, SeverityBadge } from "@/components/alert-badges";
 import { ConfirmationDialog, DropdownMenu, Toast, type MenuItem } from "@/components/overlays";
 import { Breadcrumbs, Button, Card, ErrorState, FilterSelect, KeyValueGrid, PageHeader, Skeleton, StatusBadge, TechnicalDetails } from "@/components/ui";
 import { persistAlertStatus, readAlertOverrides, type AlertWorkflowStatus, type OperationalAlert } from "@/lib/alerts-data";
+import { getDevelopmentQaParam } from "@/lib/development-qa";
 
 function workflowTimestamp() {
     return "Aug 10, 2026 · 10:44 AM";
@@ -31,7 +32,7 @@ export function AlertDetailPage({ initialAlert }: { initialAlert: OperationalAle
                 if (target.origin === window.location.origin && target.pathname === "/alerts") setBackHref(`${target.pathname}${target.search}`);
             } catch { /* Ignore malformed return locations. */ }
         }
-        const qa = params.get("qa");
+        const qa = getDevelopmentQaParam(params);
         if (qa === "history-error") setHistoryError(true);
         else if (qa && ["open", "acknowledged", "resolved"].includes(qa)) setAlert((current) => ({ ...current, status: qa === "open" ? "Open" : qa === "acknowledged" ? "Acknowledged" : "Resolved" }));
     }, [initialAlert.id]);

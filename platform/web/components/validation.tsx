@@ -8,10 +8,18 @@ import { Button, Card, EmptyState, FilterSelect, MetricCard, OperationalStatus, 
 import { ValidationResultBadge, ValidationSeverityBadge } from "@/components/validation-badges";
 import { validationActivities, validationChecks, type ValidationCheck, type ValidationEnvironment, type ValidationResult, type ValidationSeverity } from "@/lib/validation-data";
 import { withReturnTo } from "@/lib/navigation-context";
+import { getDevelopmentQaParam, isDevelopmentQaEnabled } from "@/lib/development-qa";
+import { isEnvironment, useEnvironmentContext } from "@/lib/environment-context";
 
 type QaState = "mixed" | "passing" | "warning" | "blocking" | "empty" | "no-run" | "filtered-empty" | "loading" | "error" | "partial" | "stale";
 const times = [{ label: "Last 1 hour", value: "1h" }, { label: "Last 6 hours", value: "6h" }, { label: "Last 24 hours", value: "24h" }, { label: "Last 7 days", value: "7d" }, { label: "Last 30 days", value: "30d" }];
 const options = (all: string, values: string[]) => [{ label: all, value: all === "Mixed results" ? "mixed" : "All" }, ...values.map((value) => ({ label: all === "Mixed results" ? value.replaceAll("-", " ").replace(/^./, (letter) => letter.toUpperCase()) : value, value }))];
+
+function validationContextEnvironment(params: Pick<URLSearchParams, "get">) {
+    const explicit = params.get("environment");
+    if (isEnvironment(explicit)) return explicit;
+    return validationChecks.find((check) => check.pipelineId === params.get("pipeline") || check.runId === params.get("run") || check.sourceId === params.get("source") || check.id === params.get("check"))?.environment;
+}
 
 function ScopeBanner({ params, clear }: { params: URLSearchParams; clear: () => void }) {
     const entries = [["Pipeline", params.get("pipeline")], ["Run", params.get("run")], ["Source", params.get("source")], ["Check", params.get("check")]].filter((item) => item[1]);
@@ -30,12 +38,14 @@ function Results({ checks, open, logs }: { checks: ValidationCheck[]; open: (id:
 
 export function ValidationPage() {
     const router = useRouter(); const searchParams = useSearchParams(); const paramString = searchParams.toString();
-    const initialQa = (searchParams.get("qa") as QaState) || "mixed";
+    const { currentEnvironment } = useEnvironmentContext();
+    const initialQa = (getDevelopmentQaParam(searchParams) as QaState) || "mixed";
     const [qa, setQa] = useState<QaState>(initialQa); const [query, setQuery] = useState(searchParams.get("q") || "");
     const [result, setResult] = useState(searchParams.get("result") || "All"); const [severity, setSeverity] = useState(searchParams.get("severity") || "All");
-    const [environment, setEnvironment] = useState(searchParams.get("environment") || "All"); const [pipeline, setPipeline] = useState(searchParams.get("pipeline") || "All");
+    const [environment, setEnvironmentState] = useState<ValidationEnvironment | "All">(validationContextEnvironment(searchParams) || currentEnvironment); const setEnvironment = (value: string) => setEnvironmentState(value as ValidationEnvironment | "All"); const [pipeline, setPipeline] = useState(searchParams.get("pipeline") || "All");
     const [checkType, setCheckType] = useState(searchParams.get("type") || "All"); const [time, setTime] = useState(searchParams.get("time") || "24h"); const [updated, setUpdated] = useState("just now");
-    useEffect(() => { setQa((searchParams.get("qa") as QaState) || "mixed"); }, [paramString, searchParams]);
+    useEffect(() => { setQa((getDevelopmentQaParam(searchParams) as QaState) || "mixed"); }, [paramString, searchParams]);
+    useEffect(() => { setEnvironment(validationContextEnvironment(searchParams) || currentEnvironment); }, [currentEnvironment, searchParams]);
     const setUrl = (changes: Record<string, string | null>) => { const next = new URLSearchParams(searchParams.toString()); Object.entries(changes).forEach(([key, value]) => value && value !== "All" ? next.set(key, value) : next.delete(key)); router.replace(`/validation${next.toString() ? `?${next}` : ""}`, { scroll: false }); };
     const scopedRun = searchParams.get("run"); const scopedSource = searchParams.get("source"); const scopedCheck = searchParams.get("check");
     let base = validationChecks;
@@ -47,7 +57,7 @@ export function ValidationPage() {
     const clearFilters = () => { setQuery(""); setResult("All"); setSeverity("All"); setEnvironment("All"); setPipeline("All"); setCheckType("All"); router.replace("/validation"); };
     const open = (id: string) => router.push(withReturnTo(`/validation/${id}`, `${window.location.pathname}${window.location.search}`));
     const logs = (c: ValidationCheck) => router.push(`/logs?${new URLSearchParams({ scope: "validation", pipeline: c.pipelineId, run: c.runId, stage: "Validate", code: c.platformCode, environment: c.environment, time }).toString()}`);
-    const qaSelect = (value: string) => { const next = value as QaState; setQa(next); setUrl({ qa: next === "mixed" ? null : next }); };
+    const qaSelect = (value: string) => { if (!isDevelopmentQaEnabled) return; const next = value as QaState; setQa(next); setUrl({ qa: next === "mixed" ? null : next }); };
     if (qa === "loading") return <ValidationPageSkeleton />;
     if (qa === "error") return <div className="animate-enter"><PageHeader title="Validation" description="Review data-quality checks and investigate validation failures." /><Card><div className="p-4"><OperationalStatus statusLabel="Failed" result={{ status: "Error", platformCode: "VALIDATION_UNAVAILABLE", vendorCode: "503", message: "The platform could not retrieve validation results.", recommendedAction: "Try loading Validation again." }} action={<Button onClick={() => qaSelect("mixed")}>Try Again</Button>} /></div></Card></div>;
     const allPassing = qa === "passing"; const blocking = qa === "blocking" || (!allPassing && base.some((c) => c.result === "Failed" && c.severity === "Blocking"));

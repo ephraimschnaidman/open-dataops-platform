@@ -7,6 +7,8 @@ import { AlertStatusBadge, SeverityBadge } from "@/components/alert-badges";
 import { ConfirmationDialog, DropdownMenu, Toast, type MenuItem } from "@/components/overlays";
 import { Button, EmptyState, ErrorState, FilterSelect, MetricCard, OperationalStatus, PageHeader, SearchField, Skeleton } from "@/components/ui";
 import { alerts as initialAlerts, persistAlertStatus, readAlertOverrides, sortAlerts, type AlertEnvironment, type AlertResourceType, type AlertSeverity, type AlertsQaState, type AlertWorkflowStatus, type OperationalAlert } from "@/lib/alerts-data";
+import { getDevelopmentQaParam } from "@/lib/development-qa";
+import { useEnvironmentContext } from "@/lib/environment-context";
 
 type StatusFilter = "All" | "Active" | AlertWorkflowStatus;
 type ResourceFilter = "All" | AlertResourceType;
@@ -49,12 +51,13 @@ function AlertsTable({ alerts, activeMenu, onMenuChange, onOpen, onAcknowledge, 
 
 export function AlertsPage() {
     const router = useRouter();
+    const { currentEnvironment } = useEnvironmentContext();
     const [alerts, setAlerts] = useState(initialAlerts);
     const [query, setQuery] = useState("");
     const [severity, setSeverity] = useState<"All" | AlertSeverity>("All");
     const [status, setStatus] = useState<StatusFilter>("Active");
     const [resourceType, setResourceType] = useState<ResourceFilter>("All");
-    const [environment, setEnvironment] = useState<EnvironmentFilter>("All");
+    const [environment, setEnvironment] = useState<EnvironmentFilter>(currentEnvironment);
     const [qaState, setQaState] = useState<AlertsQaState>("mixed");
     const [lastUpdated, setLastUpdated] = useState("10:43 AM");
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -64,14 +67,14 @@ export function AlertsPage() {
         const overrides = readAlertOverrides();
         setAlerts((current) => current.map((alert) => overrides[alert.id] ? { ...alert, status: overrides[alert.id] } : alert));
         const params = new URLSearchParams(window.location.search);
-        const qa = params.get("qa") as AlertsQaState | null;
+        const qa = getDevelopmentQaParam(params) as AlertsQaState | null;
         if (qa && ["mixed", "critical", "warning", "acknowledged", "no-active", "no-alerts", "resolved", "filtered-empty", "stale", "error", "partial-summary"].includes(qa)) { setQaState(qa); if (qa === "resolved") setStatus("Resolved"); }
         const requestedSeverity = params.get("severity") as AlertSeverity | null; if (requestedSeverity && ["Critical", "Warning"].includes(requestedSeverity)) setSeverity(requestedSeverity);
         const requestedStatus = params.get("status") as StatusFilter | null; if (requestedStatus && ["All", "Active", "Open", "Acknowledged", "Resolved"].includes(requestedStatus)) setStatus(requestedStatus);
         const requestedResource = params.get("resource") as ResourceFilter | null; if (requestedResource && ["Pipeline", "Pipeline Run", "Data Source", "Validation", "Platform"].includes(requestedResource)) setResourceType(requestedResource);
-        const requestedEnvironment = params.get("environment") as AlertEnvironment | null; if (requestedEnvironment && ["Production", "Staging", "Development"].includes(requestedEnvironment)) setEnvironment(requestedEnvironment);
+        const requestedEnvironment = params.get("environment") as AlertEnvironment | null; if (requestedEnvironment && ["Production", "Staging", "Development"].includes(requestedEnvironment)) setEnvironment(requestedEnvironment); else setEnvironment(currentEnvironment);
         setQuery(params.get("q") ?? "");
-    }, []);
+    }, [currentEnvironment]);
     const syncParam = (key: string, value: string, defaultValue: string) => { const params = new URLSearchParams(window.location.search); if (value === defaultValue || !value) params.delete(key); else params.set(key, value); const next = params.toString(); window.history.replaceState(null, "", `${window.location.pathname}${next ? `?${next}` : ""}`); };
     const qaAlerts = useMemo(() => {
         if (qaState === "no-alerts") return [];
@@ -81,14 +84,15 @@ export function AlertsPage() {
         if (qaState === "resolved") return alerts.filter((alert) => alert.status === "Resolved");
         return alerts;
     }, [alerts, qaState]);
-    const filteredAlerts = useMemo(() => qaState === "no-active" || qaState === "filtered-empty" ? [] : sortAlerts(qaAlerts.filter((alert) => { const term = query.trim().toLowerCase(); const searchable = [alert.id, alert.title, alert.resourceName, alert.runId, alert.platformCode, alert.vendorCode, alert.message].filter(Boolean).join(" ").toLowerCase(); return (!term || searchable.includes(term)) && (severity === "All" || alert.severity === severity) && (status === "All" || (status === "Active" ? alert.status !== "Resolved" : alert.status === status)) && (resourceType === "All" || alert.resourceType === resourceType) && (environment === "All" || alert.environment === environment); })), [qaAlerts, qaState, query, severity, status, resourceType, environment]);
+    const environmentAlerts = useMemo(() => qaAlerts.filter((alert) => environment === "All" || alert.environment === environment), [qaAlerts, environment]);
+    const filteredAlerts = useMemo(() => qaState === "no-active" || qaState === "filtered-empty" ? [] : sortAlerts(environmentAlerts.filter((alert) => { const term = query.trim().toLowerCase(); const searchable = [alert.id, alert.title, alert.resourceName, alert.runId, alert.platformCode, alert.vendorCode, alert.message].filter(Boolean).join(" ").toLowerCase(); return (!term || searchable.includes(term)) && (severity === "All" || alert.severity === severity) && (status === "All" || (status === "Active" ? alert.status !== "Resolved" : alert.status === status)) && (resourceType === "All" || alert.resourceType === resourceType); })), [environmentAlerts, qaState, query, severity, status, resourceType]);
     const hasActiveFilters = Boolean(query) || severity !== "All" || (status !== "Active" && status !== "All") || resourceType !== "All" || environment !== "All";
     const resetFilters = () => { setQuery(""); setSeverity("All"); setStatus("All"); setResourceType("All"); setEnvironment("All"); const params = new URLSearchParams(window.location.search); ["q", "severity", "resource", "environment"].forEach((key) => params.delete(key)); params.set("status", "All"); const next = params.toString(); window.history.replaceState(null, "", `${window.location.pathname}?${next}`); };
     const updateStatus = (alert: OperationalAlert, nextStatus: AlertWorkflowStatus) => { persistAlertStatus(alert.id, nextStatus); setAlerts((current) => current.map((item) => item.id === alert.id ? { ...item, status: nextStatus, ...(nextStatus === "Acknowledged" ? { acknowledgedAt: "Aug 10, 2026 · 10:44 AM" } : { resolvedAt: "Aug 10, 2026 · 10:44 AM", resolutionType: "Manual" as const }) } : item)); setToast({ message: nextStatus === "Acknowledged" ? "Alert acknowledged" : "Alert resolved", tone: "success" }); };
     const navigate = (destination: string, alert: OperationalAlert) => { if (destination === "run" && alert.runId) router.push(`/pipeline-runs/${alert.runId}`); else if (destination === "pipeline" && alert.resourceId) router.push(`/pipelines/${alert.resourceId}`); else if (destination === "source" && alert.resourceId) router.push(`/data-sources/${alert.resourceId}`); else if (destination === "validation") router.push(`/validation?${new URLSearchParams({ ...(alert.resourceId ? { pipeline: alert.resourceId } : {}), ...(alert.runId ? { run: alert.runId } : {}), result: "Failed" }).toString()}`); else if (destination === "logs") router.push(`/logs?${new URLSearchParams({ scope: alert.resourceType === "Data Source" ? "source" : alert.resourceType === "Validation" ? "validation" : alert.runId ? "run" : "pipeline", ...(alert.resourceId ? { [alert.resourceType === "Data Source" ? "source" : "pipeline"]: alert.resourceId } : {}), ...(alert.runId ? { run: alert.runId } : {}), environment: alert.environment, code: alert.platformCode, alert: alert.id, time: "24h" }).toString()}`); else setToast({ message: "Resource detail is not available for this alert.", tone: "neutral" }); };
     const openAlert = (alert: OperationalAlert) => { const returnTo = `${window.location.pathname}${window.location.search}`; const params = new URLSearchParams({ returnTo }); router.push(`/alerts/${alert.id}?${params.toString()}`); };
     const selectQa = (value: string) => { const next = value === "default" ? "mixed" : value as AlertsQaState; setQaState(next); if (next === "resolved") setStatus("Resolved"); else setStatus("Active"); syncParam("qa", value === "default" ? "" : value, ""); };
-    const activeCount = alerts.filter((alert) => alert.status !== "Resolved").length;
+    const activeCount = environmentAlerts.filter((alert) => alert.status !== "Resolved").length;
     if (qaState === "error") return <div className="animate-enter"><PageHeader title="Alerts" description="Review and act on operational issues across your data platform." /><OperationalStatus statusLabel="Failed" result={{ status: "Error", platformCode: "ALERTS_UNAVAILABLE", vendorCode: "503", message: "Alerts couldn't be loaded. The platform could not retrieve operational alert data.", recommendedAction: "Try loading Alerts again." }} action={<Button onClick={() => selectQa("default")}>Try Again</Button>} /></div>;
     return <div className="animate-enter">
         <PageHeader
@@ -104,7 +108,7 @@ export function AlertsPage() {
             </div>}
         />
         {qaState === "stale" && <div className="mb-7 rounded-lg border border-amber-200 bg-amber-50 p-4"><div className="flex gap-3"><Clock3 className="mt-0.5 h-4 w-4 text-amber-600" /><div><p className="text-sm font-semibold text-amber-900">Alert data may be stale</p><p className="mt-1 font-mono text-[10px] text-amber-700">ALERT_DATA_STALE</p><p className="mt-2 text-xs text-amber-800">The latest alert evaluation was completed 18 minutes ago. Confirm the current resource state before resolving alerts.</p><p className="mt-1 text-xs text-amber-800">Last updated 10:24 AM</p></div></div></div>}
-        {qaState === "partial-summary" ? <ErrorState title="Alert summary unavailable" description="The alert queue remains available below." actionLabel="Try Again" technicalDetails={[{ label: "Platform Code", value: "ALERT_SUMMARY_UNAVAILABLE" }]} onRetry={() => selectQa("default")} /> : <AlertMetrics alerts={qaAlerts} />}
+        {qaState === "partial-summary" ? <ErrorState title="Alert summary unavailable" description="The alert queue remains available below." actionLabel="Try Again" technicalDetails={[{ label: "Platform Code", value: "ALERT_SUMMARY_UNAVAILABLE" }]} onRetry={() => selectQa("default")} /> : <AlertMetrics alerts={environmentAlerts} />}
         <section className="mt-7">
             <div className="mb-3 flex flex-col gap-2 xl:flex-row xl:items-center">
                 <SearchField value={query} onChange={(value) => { setQuery(value); syncParam("q", value, ""); }} placeholder="Search alerts..." className="xl:max-w-xs" />

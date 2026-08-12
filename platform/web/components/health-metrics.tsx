@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Activity, AlertTriangle, Clock3, Database, FileCheck2, FlaskConical, Gauge, HeartPulse, PanelRightClose, RefreshCw, TimerReset, X } from "lucide-react";
 import { TrendChart } from "@/components/trend-chart";
@@ -9,6 +9,8 @@ import {
     coreMetrics, freshnessRows, healthResources, reliabilityRows, reviewRows, runtimeRows, scheduleRows, sourceRows, timeRangeOptions, trendLabels, trends, validationRows,
     type HealthEnvironment, type HealthMetric, type HealthQaState, type HealthResourceType, type HealthStatus, type HealthTimeRange,
 } from "@/lib/health-metrics-data";
+import { getDevelopmentQaParam } from "@/lib/development-qa";
+import { isEnvironment, useEnvironmentContext } from "@/lib/environment-context";
 
 const qaGroups: Array<{ label: string; options: Array<{ label: string; value: HealthQaState }> }> = [
     { label: "Platform States", options: [{ label: "Healthy platform", value: "healthy" }, { label: "Warning / degraded", value: "warning" }, { label: "Critical platform", value: "critical" }] },
@@ -62,15 +64,17 @@ function HealthMetricsQaPanel({ active, open, onOpenChange, onSelect }: { active
 
 export function HealthMetricsPage() {
     const router = useRouter(); const pathname = usePathname(); const params = useSearchParams();
-    const initialQa = (params.get("qa") ?? "warning") as HealthQaState;
+    const { currentEnvironment } = useEnvironmentContext();
+    const initialQa = (getDevelopmentQaParam(params) ?? "warning") as HealthQaState;
     const [qa, setQa] = useState<HealthQaState>(initialQa);
     const qaRange: HealthTimeRange | null = qa === "24-hour" ? "24h" : qa === "7-day" ? "7d" : qa === "30-day" ? "30d" : null;
     const [range, setRange] = useState<HealthTimeRange>(qaRange ?? (params.get("time") as HealthTimeRange) ?? "7d");
-    const [environment, setEnvironment] = useState<HealthEnvironment>((params.get("environment") as HealthEnvironment) ?? "All");
+    const [environment, setEnvironment] = useState<HealthEnvironment>((params.get("environment") as HealthEnvironment) ?? currentEnvironment);
     const [resourceType, setResourceType] = useState<HealthResourceType>((params.get("resourceType") as HealthResourceType) ?? (qa === "pipeline-scoped" ? "Pipelines" : qa === "source-scoped" ? "Data Sources" : "All"));
     const [resource, setResource] = useState(params.get("resource") ?? (qa === "pipeline-scoped" ? "customer-ingestion" : qa === "source-scoped" ? "analytics-warehouse" : "All"));
     const [lastUpdated, setLastUpdated] = useState("10:43 AM");
     const [qaPanelOpen, setQaPanelOpen] = useState(false);
+    useEffect(() => { if (!isEnvironment(params.get("environment"))) setEnvironment(currentEnvironment); }, [currentEnvironment, params]);
     const selectedResource = healthResources.find((item) => item.id === resource);
     const dataGapMessage = selectedResource ? `Historical health metrics for ${selectedResource.name} are incomplete for 3 hours within the selected period.` : resourceType === "Pipelines" ? "Pipeline health metrics are incomplete for 3 hours within the selected period." : resourceType === "Data Sources" ? "Source connectivity metrics are incomplete for 3 hours within the selected period." : "Historical metric coverage is incomplete for 3 hours within the selected period.";
     const healthy = qa === "healthy"; const critical = qa === "critical"; const comparisonUnavailable = qa === "insufficient-history"; const gap = qa === "data-gap";

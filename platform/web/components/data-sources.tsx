@@ -1,13 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type ComponentProps } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Boxes, Database, HardDrive, MoreHorizontal, Network, Plus, Search, Server, Warehouse } from "lucide-react";
 import { dataSources, sortDataSources, type DataSource, type DataSourceEnvironment, type DataSourceStatus, type DataSourceType } from "@/lib/data-sources-data";
-import { Button, EmptyState, ErrorState, FilterSelect, MetricCard, PageHeader, SearchField, Skeleton, StatusBadge } from "@/components/ui";
+import { Button, EmptyState, ErrorState, FilterSelect, MetricCard, PageHeader as BasePageHeader, SearchField, Skeleton, StatusBadge } from "@/components/ui";
+import { isEnvironment, useEnvironmentContext } from "@/lib/environment-context";
 
 const typeIcons: Record<DataSourceType, typeof Database> = { PostgreSQL: Database, Snowflake: Warehouse, MySQL: Database, Kafka: Network, "Amazon S3": HardDrive, "SQL Server": Server };
 const environmentDots: Record<DataSourceEnvironment, string> = { Production: "bg-emerald-500", Staging: "bg-blue-400", Development: "bg-zinc-400" };
+
+function PageHeader(props: ComponentProps<typeof BasePageHeader>) {
+    const { currentEnvironment } = useEnvironmentContext();
+    return <BasePageHeader {...props} eyebrow={<><Network className="h-3 w-3" /> {currentEnvironment} workspace</>} />;
+}
 
 function SourceMetrics({ sources }: { sources: DataSource[] }) {
     const healthy = sources.filter((source) => source.status === "Healthy").length;
@@ -22,13 +28,18 @@ function SourceTable({ sources, onSelect, onAction }: { sources: DataSource[]; o
 
 export function DataSourcesPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const { currentEnvironment } = useEnvironmentContext();
+    const explicitEnvironment = searchParams.get("environment");
     const [query, setQuery] = useState("");
     const [status, setStatus] = useState<DataSourceStatus | "All">("All");
-    const [environment, setEnvironment] = useState<DataSourceEnvironment | "All">("All");
+    const [environment, setEnvironmentState] = useState<DataSourceEnvironment | "All">(isEnvironment(explicitEnvironment) ? explicitEnvironment : currentEnvironment);
     const [loadError, setLoadError] = useState(false);
     const [notice, setNotice] = useState("");
     const filteredSources = useMemo(() => sortDataSources(dataSources).filter((source) => (source.name.toLowerCase().includes(query.toLowerCase()) || source.type.toLowerCase().includes(query.toLowerCase())) && (status === "All" || source.status === status) && (environment === "All" || source.environment === environment)), [query, status, environment]);
-    const clearFilters = () => { setQuery(""); setStatus("All"); setEnvironment("All"); };
+    useEffect(() => { if (!isEnvironment(explicitEnvironment)) setEnvironmentState(currentEnvironment); }, [currentEnvironment, explicitEnvironment]);
+    const setEnvironment = (value: DataSourceEnvironment | "All") => { setEnvironmentState(value); const next = new URLSearchParams(searchParams.toString()); if (value === "All") next.delete("environment"); else next.set("environment", value); router.replace(`/data-sources${next.size ? `?${next}` : ""}`, { scroll: false }); };
+    const clearFilters = () => { setQuery(""); setStatus("All"); setEnvironment(currentEnvironment); };
     const showNotice = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 3000); };
 
     return <div className="animate-enter"><PageHeader title="Data Sources" description="Manage systems that provide data to your pipelines." eyebrow={<><Network className="h-3 w-3" /> Production workspace</>} action={<Button variant="primary" disabled title="Adding data sources is not available in this MVP"><Plus className="h-3.5 w-3.5" /> Add Data Source</Button>} />

@@ -7,6 +7,8 @@ import { AlertTriangle, ChevronDown, ChevronRight, Clipboard, Clock3, Code2, Fil
 import { Toast } from "@/components/overlays";
 import { Breadcrumbs, Button, Card, EmptyState, FilterSelect, PageHeader, Skeleton } from "@/components/ui";
 import { logEvents, logPipelines, logSources, logStages, platformCodes, type LogEvent, type LogLevel, type LogScope } from "@/lib/logs-data";
+import { getDevelopmentQaParam } from "@/lib/development-qa";
+import { isEnvironment, useEnvironmentContext } from "@/lib/environment-context";
 
 const levels: LogLevel[] = ["Error", "Warning", "Info", "Debug"];
 const defaultLevels: LogLevel[] = ["Error", "Warning", "Info"];
@@ -74,11 +76,12 @@ function ExpandableLogRow({ event, expanded, raw, detailFailed, onToggle, onRawC
 
 export function LogsPage() {
     const router = useRouter(); const pathname = usePathname(); const params = useSearchParams();
+    const { currentEnvironment } = useEnvironmentContext();
     const initialLevels = params.get("levels")?.split(",").filter((level): level is LogLevel => levels.includes(level as LogLevel)) ?? defaultLevels;
     const [query, setQuery] = useState(params.get("q") ?? "");
     const [scope, setScope] = useState<LogScope>((params.get("scope") as LogScope) ?? "all");
     const [selectedLevels, setSelectedLevels] = useState<LogLevel[]>(initialLevels.length ? initialLevels : defaultLevels);
-    const [environment, setEnvironment] = useState(params.get("environment") ?? "All");
+    const [environment, setEnvironment] = useState(params.get("environment") ?? currentEnvironment);
     const [pipeline, setPipeline] = useState(params.get("pipeline") ?? "All");
     const [runId, setRunIdState] = useState(canonicalRunId(params.get("run") ?? ""));
     const setRunId = (value: string) => setRunIdState(canonicalRunId(value));
@@ -93,14 +96,15 @@ export function LogsPage() {
     const [lastUpdated, setLastUpdated] = useState("10:43:02 AM");
     const [expanded, setExpanded] = useState<string | null>(params.get("event"));
     const [raw, setRaw] = useState(params.get("raw") === "1" ? params.get("event") : null);
-    const [detailFailed, setDetailFailed] = useState(params.get("qa") === "partial-detail");
-    const [limit, setLimit] = useState(8); const [newCount, setNewCount] = useState(params.get("qa") === "mixed" ? 12 : 0);
+    const [detailFailed, setDetailFailed] = useState(getDevelopmentQaParam(params) === "partial-detail");
+    const [limit, setLimit] = useState(8); const [newCount, setNewCount] = useState(getDevelopmentQaParam(params) === "mixed" ? 12 : 0);
     const [toast, setToast] = useState<string | null>(null);
-    const qa = (params.get("qa") ?? "mixed") as QaState;
+    const qa = (getDevelopmentQaParam(params) ?? "mixed") as QaState;
 
     const setUrl = (updates: Record<string, string | null>) => { const next = new URLSearchParams(params.toString()); Object.entries(updates).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key)); router.replace(`${pathname}?${next.toString()}`, { scroll: false }); };
     useEffect(() => { if (autoRefresh === "off") return; const timer = window.setInterval(() => { setLastUpdated(new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" }).format(new Date())); }, Number(autoRefresh) * 1000); return () => window.clearInterval(timer); }, [autoRefresh]);
     useEffect(() => { if (qa === "expanded" || qa === "raw" || qa === "stack-trace" || qa === "partial-detail") { setExpanded("evt-001"); setRaw(qa === "raw" ? "evt-001" : null); } if (qa === "auto-refresh") setAutoRefresh("5"); }, [qa]);
+    useEffect(() => { if (!isEnvironment(params.get("environment"))) setEnvironment(currentEnvironment); }, [currentEnvironment, params]);
 
     const relevantPipeline = scope === "pipeline" || scope === "run" || scope === "validation";
     const relevantRun = scope === "run" || scope === "validation";

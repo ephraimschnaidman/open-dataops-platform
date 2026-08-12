@@ -9,6 +9,8 @@ import {
     activeIssues, metricsByRange, pipelineHealth, recentEvents, scheduleIssues, sortActiveIssues, sourceHealth, timeRangeOptions, trendsByRange,
     type ActiveIssue, type MonitoringEnvironment, type MonitoringHealthStatus, type MonitoringQaState, type MonitoringResourceType, type MonitoringTimeRange,
 } from "@/lib/monitoring-data";
+import { getDevelopmentQaParam, isDevelopmentQaEnabled } from "@/lib/development-qa";
+import { useEnvironmentContext } from "@/lib/environment-context";
 
 type SectionKey = "issues" | "pipelines" | "reliability" | "runtime" | "schedule" | "sources" | "events";
 
@@ -48,14 +50,15 @@ function SourceHealthTable({ rows, onOpen }: { rows: typeof sourceHealth; onOpen
 
 export function MonitoringPage() {
     const router = useRouter();
+    const { currentEnvironment } = useEnvironmentContext();
     const [timeRange, setTimeRange] = useState<MonitoringTimeRange>("24h");
-    const [environment, setEnvironment] = useState<MonitoringEnvironment>("All");
+    const [environment, setEnvironment] = useState<MonitoringEnvironment>(currentEnvironment);
     const [resourceType, setResourceType] = useState<MonitoringResourceType>("All");
     const [qaState, setQaState] = useState<MonitoringQaState>("warning");
     const [lastUpdated, setLastUpdated] = useState("10:43 AM");
     const [notice, setNotice] = useState("");
     const [sectionErrors, setSectionErrors] = useState<Record<SectionKey, boolean>>({ issues: false, pipelines: false, reliability: false, runtime: false, schedule: false, sources: false, events: false });
-    useEffect(() => { const qa = new URLSearchParams(window.location.search).get("qa") as MonitoringQaState | null; if (qa && ["warning", "healthy", "critical", "no-issues", "empty", "stale", "error", "partial"].includes(qa)) { setQaState(qa); if (qa === "partial") setSectionErrors((current) => ({ ...current, sources: true })); } }, []);
+    useEffect(() => { const params = new URLSearchParams(window.location.search); const requestedEnvironment = params.get("environment"); setEnvironment(requestedEnvironment && ["Production", "Staging", "Development"].includes(requestedEnvironment) ? requestedEnvironment as MonitoringEnvironment : currentEnvironment); const qa = getDevelopmentQaParam(params) as MonitoringQaState | null; if (qa && ["warning", "healthy", "critical", "no-issues", "empty", "stale", "error", "partial"].includes(qa)) { setQaState(qa); if (qa === "partial") setSectionErrors((current) => ({ ...current, sources: true })); } }, [currentEnvironment]);
     const healthyVariant = qaState === "healthy" || qaState === "no-issues";
     const showPipelines = resourceType !== "Data Sources";
     const showSources = resourceType !== "Pipelines";
@@ -71,8 +74,9 @@ export function MonitoringPage() {
     const healthStatus: MonitoringHealthStatus = qaState === "critical" ? "Critical" : healthy ? "Healthy" : "Warning";
     const healthResult = healthStatus === "Healthy" ? { status: "Success" as const, platformCode: "PLATFORM_HEALTHY", message: "All monitored resources are operating normally.", recommendedAction: "No corrective action is required." } : healthStatus === "Critical" ? { status: "Error" as const, platformCode: "PLATFORM_CRITICAL", vendorCode: "HTTP 503", message: "A critical platform resource is unavailable.", recommendedAction: "Investigate the affected pipeline and source immediately." } : { status: "Warning" as const, platformCode: "PLATFORM_DEGRADED", message: "3 monitored resources require attention.", recommendedAction: "Review the affected resources below." };
     const clearFilters = () => { setEnvironment("All"); setResourceType("All"); setTimeRange("24h"); };
-    const showQaSelector = process.env.NODE_ENV === "development";
+    const showQaSelector = isDevelopmentQaEnabled;
     const selectQaState = (value: string) => {
+        if (!isDevelopmentQaEnabled) return;
         const nextState = value === "default" ? "warning" : value as MonitoringQaState;
         const params = new URLSearchParams(window.location.search);
         if (value === "default") params.delete("qa"); else params.set("qa", value);

@@ -21,6 +21,7 @@ import { Button, EmptyState, ErrorState, FilterSelect, MetricCard, PageHeader, S
 import { ConfirmationDialog, DropdownMenu, Toast, type MenuItem } from "@/components/overlays";
 import { withReturnTo } from "@/lib/navigation-context";
 import { conceptualRetryId, persistConceptualRetry, persistRunStatus, readConceptualRetries, readRunStatusOverrides } from "@/lib/mock-run-state";
+import { isEnvironment, useEnvironmentContext } from "@/lib/environment-context";
 
 interface ToastState {
     message: string;
@@ -57,6 +58,8 @@ function PipelineRunsTable({ runs, now, activeMenu, onMenuChange, onOpen: onOpen
 
 export function PipelineRunsPage() {
     const router = useRouter();
+    const { currentEnvironment } = useEnvironmentContext();
+    const [environment, setEnvironment] = useState<typeof currentEnvironment>(currentEnvironment);
     const [runs, setRuns] = useState(initialPipelineRuns);
     const [now] = useState(pipelineRunsReferenceTime);
     const [query, setQuery] = useState("");
@@ -75,20 +78,22 @@ export function PipelineRunsPage() {
         const overrides = readRunStatusOverrides();
         setRuns([...readConceptualRetries(), ...initialPipelineRuns].map((run) => overrides[run.id] ? { ...run, status: overrides[run.id] } : run));
         const params = new URLSearchParams(window.location.search);
+        const requestedEnvironment = params.get("environment");
         const requestedPipeline = params.get("pipeline");
         const requestedStatus = params.get("status") as PipelineRunStatus | null;
         const requestedTrigger = params.get("trigger") as PipelineRunTrigger | null;
         const requestedTime = params.get("time") as PipelineRunTimeRange | null;
         if (requestedPipeline && pipelines.some((pipeline) => pipeline.id === requestedPipeline)) setPipelineId(requestedPipeline);
+        if (isEnvironment(requestedEnvironment)) setEnvironment(requestedEnvironment); else if (requestedPipeline) setEnvironment(pipelines.find((pipeline) => pipeline.id === requestedPipeline)?.environment ?? currentEnvironment); else setEnvironment(currentEnvironment);
         if (requestedStatus && ["Running", "Success", "Failed", "Cancelled"].includes(requestedStatus)) setStatus(requestedStatus);
         if (requestedTrigger && ["Scheduled", "Manual", "Retry", "Event"].includes(requestedTrigger)) setTrigger(requestedTrigger);
         if (requestedTime && timeRangeOptions.some((option) => option.value === requestedTime)) setTimeRange(requestedTime);
         setQuery(params.get("q") ?? "");
-    }, []);
+    }, [currentEnvironment]);
     const syncParam = (key: string, value: string, defaultValue: string) => { const params = new URLSearchParams(window.location.search); if (!value || value === defaultValue) params.delete(key); else params.set(key, value); const next = params.toString(); window.history.replaceState(null, "", `${window.location.pathname}${next ? `?${next}` : ""}`); };
     const selectedRange = timeRangeOptions.find((option) => option.value === timeRange) ?? timeRangeOptions[1];
     const rangeRuns = useMemo(() => runs.filter((run) => now - Date.parse(run.startedAt) <= selectedRange.minutes * 60_000), [runs, now, selectedRange.minutes]);
-    const filteredRuns = useMemo(() => sortPipelineRuns(rangeRuns.filter((run) => { const term = query.trim().toLowerCase(); const matchesSearch = !term || run.pipelineName.toLowerCase().includes(term) || run.id.toLowerCase().includes(term) || run.platformCode.toLowerCase().includes(term) || run.vendorCode?.toLowerCase().includes(term); return matchesSearch && (status === "All" || run.status === status) && (pipelineId === "All" || run.pipelineId === pipelineId) && (trigger === "All" || run.trigger === trigger); })), [rangeRuns, query, status, pipelineId, trigger]);
+    const filteredRuns = useMemo(() => sortPipelineRuns(rangeRuns.filter((run) => { const term = query.trim().toLowerCase(); const matchesSearch = !term || run.pipelineName.toLowerCase().includes(term) || run.id.toLowerCase().includes(term) || run.platformCode.toLowerCase().includes(term) || run.vendorCode?.toLowerCase().includes(term); const runEnvironment = pipelines.find((pipeline) => pipeline.id === run.pipelineId)?.environment; return matchesSearch && (status === "All" || run.status === status) && (pipelineId === "All" ? runEnvironment === environment : run.pipelineId === pipelineId) && (trigger === "All" || run.trigger === trigger); })), [rangeRuns, query, status, pipelineId, trigger, environment]);
     const clearFilters = () => { setQuery(""); setStatus("All"); setPipelineId("All"); setTrigger("All"); setTimeRange("day"); window.history.replaceState(null, "", window.location.pathname); };
     const placeholder = (message: string) => setToast({ message, tone: "neutral" });
     const confirmAction = () => {
