@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
 import { LogsPage, LogsPageSkeleton } from "@/components/logs";
 
-export const metadata: Metadata = { title: "Logs · Datum" };
+export const metadata: Metadata = { title: "Logs · Corvetra" };
 
 export default function LogsRoute() {
     return <AppShell><Suspense fallback={<LogsPageSkeleton />}><LogsPage /></Suspense></AppShell>;

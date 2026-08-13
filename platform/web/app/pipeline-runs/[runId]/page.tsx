@@ -17,7 +17,7 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: PipelineRunDetailRouteProps): Promise<Metadata> {
     const { runId } = await params;
     const run = getPipelineRunDetail(runId);
-    return { title: run ? `${run.pipelineName} · ${run.id} · Datum` : "Pipeline Run · Datum" };
+    return { title: run ? `${run.pipelineName} · ${run.id} · Corvetra` : "Pipeline Run · Corvetra" };
 }
 
 export default async function PipelineRunDetailRoute({ params }: PipelineRunDetailRouteProps) {

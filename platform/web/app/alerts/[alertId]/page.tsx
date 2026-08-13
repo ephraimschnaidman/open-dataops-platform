@@ -13,7 +13,7 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: AlertDetailRouteProps): Promise<Metadata> {
     const { alertId } = await params;
     const alert = getAlert(alertId);
-    return { title: alert ? `${alert.id} · ${alert.title} · Datum` : "Alert · Datum" };
+    return { title: alert ? `${alert.id} · ${alert.title} · Corvetra` : "Alert · Corvetra" };
 }
 
 export default async function AlertDetailRoute({ params }: AlertDetailRouteProps) {

@@ -1,4 +1,4 @@
-# Datum web dashboard
+# Corvetra web dashboard
 
 Frontend shell and operational dashboard for the Modern Data Operations Platform.
 

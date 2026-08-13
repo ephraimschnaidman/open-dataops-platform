@@ -15,7 +15,7 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: PipelineDetailRouteProps): Promise<Metadata> {
     const { pipelineId } = await params;
     const pipeline = getPipelineDetail(pipelineId);
-    return { title: pipeline ? `${pipeline.name} · Pipelines · Datum` : "Pipeline · Datum" };
+    return { title: pipeline ? `${pipeline.name} · Pipelines · Corvetra` : "Pipeline · Corvetra" };
 }
 
 export default async function PipelineDetailRoute({ params }: PipelineDetailRouteProps) {

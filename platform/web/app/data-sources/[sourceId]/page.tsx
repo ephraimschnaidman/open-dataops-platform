@@ -15,7 +15,7 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: DetailPageProps): Promise<Metadata> {
     const { sourceId } = await params;
     const source = getDataSourceDetail(sourceId);
-    return { title: source ? `${source.name} · Data Sources · Datum` : "Data Source · Datum" };
+    return { title: source ? `${source.name} · Data Sources · Corvetra` : "Data Source · Corvetra" };
 }
 
 export default async function DataSourceDetailRoute({ params }: DetailPageProps) {

@@ -27,13 +27,13 @@ export interface OperationalDefaults {
 
 export const settingsSections: Array<{ id: SettingsSectionId; label: string; description: string }> = [
     { id: "general", label: "General", description: "Workspace identity and basic preferences." },
-    { id: "environments", label: "Environments", description: "Operational separation within this Datum workspace." },
+    { id: "environments", label: "Environments", description: "Operational separation within this Corvetra workspace." },
     { id: "users", label: "Users & Access", description: "Workspace users and their access roles." },
     { id: "notifications", label: "Notifications", description: "Destinations for operational alert notifications." },
     { id: "operational-defaults", label: "Operational Defaults", description: "Workspace-wide health and validation defaults." },
 ];
 
-export const initialGeneralSettings: GeneralSettings = { workspaceName: "Datum Demo Workspace", workspaceId: "workspace_01J4X8K97B", defaultEnvironment: "production", timezone: "America/New_York", dateTimeDisplay: "Local workspace time" };
+export const initialGeneralSettings: GeneralSettings = { workspaceName: "Corvetra Demo Workspace", workspaceId: "workspace_01J4X8K97B", defaultEnvironment: "production", timezone: "America/New_York", dateTimeDisplay: "Local workspace time" };
 
 export const initialEnvironments: EnvironmentSetting[] = [
     { id: "production", name: "Production", status: "Active", resources: 18, pipelines: 8, sources: 5, other: 5, created: "January 12, 2025", isDefault: true },
