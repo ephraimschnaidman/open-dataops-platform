@@ -1,40 +1,46 @@
 from __future__ import annotations
 
-from datetime import datetime
-from uuid import UUID
+from pydantic import BaseModel, ConfigDict
 
-from pydantic import BaseModel, ConfigDict, Field
+from api.schemas.core_resources import (
+    ApiErrorResponse,
+    AlertSummary,
+    DataSourceSummary,
+    EnvironmentSummary,
+    PaginationMetadata,
+    PipelineOperationalStatus,
+    RunSummary,
+    ValidationSummary,
+)
 
 
-class PipelineResponse(BaseModel):
+class PipelineListItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    pipeline_run_id: UUID
-    dag_id: str
-    airflow_run_id: str
-    started_at: datetime
-    completed_at: datetime | None
-    run_status: str
-    created_at: datetime
+    pipeline_key: str
+    name: str
+    environment: EnvironmentSummary
+    source: DataSourceSummary
+    is_enabled: bool
+    operational_status: PipelineOperationalStatus
+    latest_run: RunSummary | None
+    current_issue: AlertSummary | None
 
 
-class PipelinePaginationMetadata(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    limit: int = Field(ge=1, le=100)
-    offset: int = Field(ge=0)
-    total: int = Field(ge=0)
-    returned_count: int = Field(ge=0)
+class PipelineDetail(PipelineListItem):
+    airflow_dag_id: str
+    recent_runs: list[RunSummary]
+    validation_summary: ValidationSummary
+    active_alerts: list[AlertSummary]
+    technical_evidence_count: int
 
 
 class PipelineListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    items: list[PipelineResponse]
-    pagination: PipelinePaginationMetadata
+    items: list[PipelineListItem]
+    pagination: PaginationMetadata
 
 
-class PipelineErrorResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    detail: str
+PipelinePaginationMetadata = PaginationMetadata
+PipelineErrorResponse = ApiErrorResponse

@@ -107,8 +107,8 @@ Public resources are:
 - `POST /api/v1/auth/token`; and
 - `/docs`, `/redoc`, and `/openapi.json` when `API_DOCS_ENABLED=true`.
 
-All existing read-only incident, metric, schema-snapshot, dbt-metadata, and
-pipeline-history operations require authentication. Health and login remain
+All read-only incident, metric, schema-snapshot, dbt-metadata, data-source,
+pipeline, and canonical pipeline-run operations require authentication. Health and login remain
 public. Invalid credentials return HTTP 401 with
 `WWW-Authenticate: Bearer`; an active user lacking an accepted role receives
 HTTP 403.
@@ -154,7 +154,12 @@ pipeline, validation-definition, and alert state.
 | `GET /api/v1/metrics` | List persisted table health measurements |
 | `GET /api/v1/schema-snapshots` | List persisted table schema snapshots |
 | `GET /api/v1/dbt-metadata` | List persisted dbt node execution results |
-| `GET /api/v1/pipelines` | List pipeline runs recorded by metadata collection |
+| `GET /api/v1/data-sources` | List canonical data sources and operational state |
+| `GET /api/v1/data-sources/{source_key}` | Retrieve canonical source context and evidence |
+| `GET /api/v1/pipelines` | List first-class canonical pipelines and derived state |
+| `GET /api/v1/pipelines/{pipeline_key}` | Retrieve canonical pipeline execution context |
+| `GET /api/v1/pipeline-runs` | List canonical product-facing pipeline runs |
+| `GET /api/v1/pipeline-runs/{corvetra_run_id}` | Retrieve run alerts, validations, and evidence |
 | `GET /api/v1/operations/dags` | List live Airflow DAGs |
 | `GET /api/v1/operations/dags/{dag_id}` | Get one live DAG |
 | `GET /api/v1/operations/runs` | List live DAG runs, optionally filtered by DAG |
@@ -205,13 +210,22 @@ The API reads operational metadata from:
 - `metadata.incident_context`;
 - `metadata.table_health_metrics`;
 - `metadata.table_schema_snapshots`;
-- `metadata.dbt_node_results`; and
-- `metadata.pipeline_runs`.
+- `metadata.dbt_node_results`;
+- `metadata.environments`;
+- `metadata.data_sources`;
+- `metadata.pipelines`;
+- `metadata.pipeline_runs`;
+- `metadata.validation_checks`;
+- `metadata.validation_executions`;
+- `metadata.operational_alerts`; and
+- `metadata.technical_events`.
 
-The pipelines endpoint represents records persisted by the metadata collection
-stage. It is not guaranteed to include Airflow DAG runs that fail before
-metadata collection occurs. Complete execution auditing, including failed runs
-that terminate early, remains a deferred enhancement.
+The pipeline-runs API exposes only rows carrying a product-facing
+`corvetra_run_id`; legacy metadata-collector rows remain available to existing
+dbt, health, incident, and Grafana consumers but are intentionally absent from
+these canonical endpoints. Pipeline status is derived from enabled state,
+latest canonical run, active alerts, source state, and warning-severity
+validation results. Resolved alerts do not affect current status.
 
 ## Security limitations and scope boundaries
 
@@ -227,6 +241,6 @@ that terminate early, remains a deferred enhancement.
   retry/cancel are outside the current operations contract.
 - Triggering a paused Airflow DAG creates a queued run, but Airflow will not
   execute its tasks until the DAG is unpaused.
-- Complete auditing of runs that fail before metadata collection remains
-  deferred from the PostgreSQL-backed pipeline-history endpoint; live Airflow
-  run reads are not subject to that persistence limitation.
+- Canonical pipeline-run reads are limited to records deliberately assigned a
+  product-facing Corvetra run ID; live Airflow run reads remain a separate
+  operations resource.

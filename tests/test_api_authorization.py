@@ -17,10 +17,12 @@ from api.auth_dependencies import (  # noqa: E402
 from api.config import Settings  # noqa: E402
 from api.main import app, create_app  # noqa: E402
 from api.routes.dbt_metadata import get_dbt_metadata_service  # noqa: E402
+from api.routes.data_sources import get_data_source_service  # noqa: E402
 from api.routes.health import get_health_service  # noqa: E402
 from api.routes.incidents import get_incident_service  # noqa: E402
 from api.routes.metrics import get_metric_service  # noqa: E402
 from api.routes.pipelines import get_pipeline_service  # noqa: E402
+from api.routes.pipeline_runs import get_pipeline_run_service  # noqa: E402
 from api.routes.schema_snapshots import (  # noqa: E402
     get_schema_snapshot_service,
 )
@@ -29,6 +31,8 @@ from api.schemas.dbt_metadata import (  # noqa: E402
     DbtMetadataListResponse,
     DbtMetadataPaginationMetadata,
 )
+from api.schemas.data_sources import DataSourceListResponse  # noqa: E402
+from api.schemas.core_resources import PaginationMetadata as CorePaginationMetadata  # noqa: E402
 from api.schemas.health import HealthResponse  # noqa: E402
 from api.schemas.incidents import IncidentListResponse, PaginationMetadata  # noqa: E402
 from api.schemas.metrics import (  # noqa: E402
@@ -39,12 +43,16 @@ from api.schemas.pipelines import (  # noqa: E402
     PipelineListResponse,
     PipelinePaginationMetadata,
 )
+from api.schemas.pipeline_runs import PipelineRunListResponse  # noqa: E402
 from api.schemas.schema_snapshots import (  # noqa: E402
     SchemaSnapshotListResponse,
     SchemaSnapshotPaginationMetadata,
 )
 from api.security import create_access_token  # noqa: E402
 from api.services.incidents import IncidentNotFoundError  # noqa: E402
+from api.services.data_sources import DataSourceNotFoundError  # noqa: E402
+from api.services.pipelines import PipelineNotFoundError  # noqa: E402
+from api.services.pipeline_runs import PipelineRunNotFoundError  # noqa: E402
 
 USER_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 PROTECTED_PATHS = (
@@ -52,7 +60,14 @@ PROTECTED_PATHS = (
     "/api/v1/metrics",
     "/api/v1/schema-snapshots",
     "/api/v1/dbt-metadata",
+    "/api/v1/data-sources",
     "/api/v1/pipelines",
+    "/api/v1/pipeline-runs",
+)
+CORE_DETAIL_PATHS = (
+    "/api/v1/data-sources/events-kafka",
+    "/api/v1/pipelines/events-processing",
+    "/api/v1/pipeline-runs/run_01J94EVT18",
 )
 
 
@@ -150,6 +165,38 @@ class EmptyOperationalService:
             ),
         )
 
+    async def list_data_sources(self, **arguments):
+        self.called = True
+        return DataSourceListResponse(
+            items=[],
+            pagination=CorePaginationMetadata(
+                limit=arguments["limit"], offset=arguments["offset"],
+                total=0, returned_count=0,
+            ),
+        )
+
+    async def list_pipeline_runs(self, **arguments):
+        self.called = True
+        return PipelineRunListResponse(
+            items=[],
+            pagination=CorePaginationMetadata(
+                limit=arguments["limit"], offset=arguments["offset"],
+                total=0, returned_count=0,
+            ),
+        )
+
+    async def get_data_source(self, key):
+        self.called = True
+        raise DataSourceNotFoundError
+
+    async def get_pipeline(self, key):
+        self.called = True
+        raise PipelineNotFoundError
+
+    async def get_pipeline_run(self, key):
+        self.called = True
+        raise PipelineRunNotFoundError
+
 
 class StubHealthService:
     async def check(self):
@@ -169,7 +216,9 @@ class EndpointProtectionTests(unittest.TestCase):
             get_metric_service,
             get_schema_snapshot_service,
             get_dbt_metadata_service,
+            get_data_source_service,
             get_pipeline_service,
+            get_pipeline_run_service,
         ):
             app.dependency_overrides[dependency] = lambda: self.service
         app.dependency_overrides[get_user_repository] = lambda: None
@@ -213,6 +262,22 @@ class EndpointProtectionTests(unittest.TestCase):
             for path in PROTECTED_PATHS:
                 with self.subTest(role=role, path=path):
                     self.assertEqual(self.client.get(path).status_code, 200)
+
+    def test_core_detail_routes_apply_the_same_rbac(self):
+        for path in CORE_DETAIL_PATHS:
+            with self.subTest(path=path, access="anonymous"):
+                self.assertEqual(self.client.get(path).status_code, 401)
+        app.dependency_overrides[get_current_active_user] = lambda: active_user("Auditor")
+        for path in (*PROTECTED_PATHS, *CORE_DETAIL_PATHS):
+            with self.subTest(path=path, access="unaccepted-role"):
+                self.assertEqual(self.client.get(path).status_code, 403)
+        for role in ("Admin", "Operator", "ReadOnly"):
+            app.dependency_overrides[get_current_active_user] = (
+                lambda selected_role=role: active_user(selected_role)
+            )
+            for path in CORE_DETAIL_PATHS:
+                with self.subTest(path=path, role=role):
+                    self.assertEqual(self.client.get(path).status_code, 404)
 
     def test_authenticated_query_validation_and_404_are_preserved(self):
         app.dependency_overrides[get_current_active_user] = (
@@ -289,6 +354,15 @@ class PublicAndOpenApiTests(unittest.TestCase):
             "security",
             schema["paths"]["/api/v1/auth/token"]["post"],
         )
+        for path in (
+            "/api/v1/data-sources/{source_key}",
+            "/api/v1/pipelines/{pipeline_key}",
+            "/api/v1/pipeline-runs/{corvetra_run_id}",
+        ):
+            self.assertEqual(
+                schema["paths"][path]["get"]["security"],
+                [{"OAuth2PasswordBearer": []}],
+            )
 
     def test_docs_setting_is_preserved(self):
         enabled = TestClient(create_app(make_settings(api_docs_enabled=True)))
