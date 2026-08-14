@@ -27,6 +27,7 @@ class LogRedactionAndValidationTests(unittest.TestCase):
 
     def test_invalid_filters_are_422(self):
         app.dependency_overrides[get_current_active_user] = lambda: ACTIVE_TEST_USER
+        app.dependency_overrides[get_log_service] = lambda: object()
         client = TestClient(app)
         for path in (
             "/api/v1/logs?level=TRACE", "/api/v1/logs?sort=sideways",

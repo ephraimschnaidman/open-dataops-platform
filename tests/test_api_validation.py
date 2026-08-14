@@ -44,6 +44,7 @@ class ValidationSchemaAndRouteTests(unittest.TestCase):
 
     def test_invalid_ranges_and_ambiguous_detail_are_rejected(self):
         app.dependency_overrides[get_current_active_user] = lambda: ACTIVE_TEST_USER
+        app.dependency_overrides[get_validation_service] = lambda: object()
         client = TestClient(app)
         for path in (
             "/api/v1/validation?result=BAD",

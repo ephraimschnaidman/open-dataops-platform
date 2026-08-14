@@ -29,6 +29,9 @@ from api.routes.schema_snapshots import (  # noqa: E402
     get_schema_snapshot_service,
 )
 from api.routes.validation import get_validation_service  # noqa: E402
+from api.routes.monitoring import get_monitoring_service  # noqa: E402
+from api.routes.health_metrics import get_health_metrics_service  # noqa: E402
+from api.routes.dashboard import get_dashboard_service  # noqa: E402
 from api.schemas.auth import CurrentUser  # noqa: E402
 from api.schemas.dbt_metadata import (  # noqa: E402
     DbtMetadataListResponse,
@@ -62,6 +65,8 @@ from api.services.pipeline_runs import PipelineRunNotFoundError  # noqa: E402
 from api.services.alerts import AlertNotFoundError  # noqa: E402
 from api.services.logs import LogEventNotFoundError  # noqa: E402
 from api.services.validation import ValidationExecutionNotFoundError  # noqa: E402
+from api.services.aggregations import AggregationService  # noqa: E402
+from tests.aggregation_test_fixtures import NOW as AGGREGATION_NOW, StubAggregationRepository  # noqa: E402
 
 USER_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 PROTECTED_PATHS = (
@@ -75,6 +80,9 @@ PROTECTED_PATHS = (
     "/api/v1/alerts",
     "/api/v1/validation",
     "/api/v1/logs",
+    "/api/v1/monitoring",
+    "/api/v1/health-metrics",
+    "/api/v1/dashboard",
 )
 CORE_DETAIL_PATHS = (
     "/api/v1/data-sources/events-kafka",
@@ -215,6 +223,24 @@ class EmptyOperationalService:
         return LogEventListResponse(items=[], pagination=CorePaginationMetadata(
             limit=arguments["limit"], offset=arguments["offset"], total=0, returned_count=0))
 
+    async def get_monitoring(self, **arguments):
+        self.called = True
+        return await AggregationService(
+            StubAggregationRepository(), clock=lambda: AGGREGATION_NOW
+        ).get_monitoring(**arguments)
+
+    async def get_health_metrics(self, **arguments):
+        self.called = True
+        return await AggregationService(
+            StubAggregationRepository(), clock=lambda: AGGREGATION_NOW
+        ).get_health_metrics(**arguments)
+
+    async def get_dashboard(self, **arguments):
+        self.called = True
+        return await AggregationService(
+            StubAggregationRepository(), clock=lambda: AGGREGATION_NOW
+        ).get_dashboard(**arguments)
+
     async def get_data_source(self, key):
         self.called = True
         raise DataSourceNotFoundError
@@ -264,6 +290,9 @@ class EndpointProtectionTests(unittest.TestCase):
             get_alert_service,
             get_validation_service,
             get_log_service,
+            get_monitoring_service,
+            get_health_metrics_service,
+            get_dashboard_service,
         ):
             app.dependency_overrides[dependency] = lambda: self.service
         app.dependency_overrides[get_user_repository] = lambda: None

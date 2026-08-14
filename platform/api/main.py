@@ -25,6 +25,9 @@ from api.routes.pipelines import router as pipelines_router
 from api.routes.pipeline_runs import router as pipeline_runs_router
 from api.routes.schema_snapshots import router as schema_snapshots_router
 from api.routes.validation import router as validation_router
+from api.routes.monitoring import router as monitoring_router
+from api.routes.health_metrics import router as health_metrics_router
+from api.routes.dashboard import router as dashboard_router
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -117,6 +120,18 @@ def create_app(application_settings: Settings) -> FastAPI:
     )
     application.include_router(
         operations_router,
+        dependencies=operational_dependencies,
+    )
+    application.include_router(
+        monitoring_router,
+        dependencies=operational_dependencies,
+    )
+    application.include_router(
+        health_metrics_router,
+        dependencies=operational_dependencies,
+    )
+    application.include_router(
+        dashboard_router,
         dependencies=operational_dependencies,
     )
 

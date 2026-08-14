@@ -166,6 +166,9 @@ pipeline, validation-definition, and alert state.
 | `GET /api/v1/validation/{check_key}/runs/{corvetra_run_id}` | Retrieve one run-qualified validation execution |
 | `GET /api/v1/logs` | List persisted technical evidence events |
 | `GET /api/v1/logs/{event_key}` | Retrieve sanitized structured technical evidence |
+| `GET /api/v1/monitoring` | Aggregate current canonical operational state and active issues |
+| `GET /api/v1/health-metrics` | Calculate canonical reliability metrics over a selected period |
+| `GET /api/v1/dashboard` | Return a concise canonical platform overview |
 | `GET /api/v1/operations/dags` | List live Airflow DAGs |
 | `GET /api/v1/operations/dags/{dag_id}` | Get one live DAG |
 | `GET /api/v1/operations/runs` | List live DAG runs, optionally filtered by DAG |
@@ -239,6 +242,16 @@ check key and Corvetra run ID. Logs expose persisted technical events rather
 than Airflow filesystem logs; structured event details are recursively redacted
 for credential-bearing keys before serialization. Alert lifecycle mutations
 and fabricated occurrence history are outside this read-only API boundary.
+
+Monitoring, Health Metrics, and Dashboard are read-only projections over the
+same canonical resources. They reuse the Pipelines API status derivation and
+never persist a separate global health value. Only runs with a non-null
+`corvetra_run_id` participate in Corvetra reliability calculations. Schedule
+adherence, historical source availability, and canonical freshness compliance
+are returned as explicitly unsupported because the required history or mapping
+is not persisted. Missing periods remain sparse and are never filled with
+synthetic values. The legacy table-oriented `/api/v1/metrics` and incidents
+contracts are unchanged.
 
 ## Security limitations and scope boundaries
 
