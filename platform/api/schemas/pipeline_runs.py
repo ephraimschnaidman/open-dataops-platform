@@ -11,9 +11,7 @@ from api.schemas.core_resources import (
     RunStatus,
     StageName,
     TechnicalEvidenceSummary,
-    ValidationResult,
-    ValidationSeverity,
-    ValidationCheckType,
+    ValidationExecutionSummary,
     ValidationSummary,
 )
 
@@ -41,25 +39,6 @@ class AirflowIdentity(BaseModel):
 
     dag_id: str
     airflow_run_id: str
-
-
-class ValidationExecutionSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    check_key: str
-    name: str
-    type: ValidationCheckType
-    dataset_name: str
-    column_name: str | None
-    result: ValidationResult
-    severity: ValidationSeverity
-    platform_code: str
-    rule_code: str | None
-    vendor_code: str | None
-    actual: str | None
-    expected: str | None
-    message: str
-    evaluated_at: AwareDatetime
 
 
 class PipelineRunDetail(PipelineRunListItem):

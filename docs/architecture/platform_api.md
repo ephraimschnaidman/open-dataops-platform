@@ -160,6 +160,12 @@ pipeline, validation-definition, and alert state.
 | `GET /api/v1/pipelines/{pipeline_key}` | Retrieve canonical pipeline execution context |
 | `GET /api/v1/pipeline-runs` | List canonical product-facing pipeline runs |
 | `GET /api/v1/pipeline-runs/{corvetra_run_id}` | Retrieve run alerts, validations, and evidence |
+| `GET /api/v1/alerts` | List first-class operational alerts and resource context |
+| `GET /api/v1/alerts/{alert_key}` | Retrieve one alert and bounded run evidence |
+| `GET /api/v1/validation` | List the newest eligible execution per enabled validation check |
+| `GET /api/v1/validation/{check_key}/runs/{corvetra_run_id}` | Retrieve one run-qualified validation execution |
+| `GET /api/v1/logs` | List persisted technical evidence events |
+| `GET /api/v1/logs/{event_key}` | Retrieve sanitized structured technical evidence |
 | `GET /api/v1/operations/dags` | List live Airflow DAGs |
 | `GET /api/v1/operations/dags/{dag_id}` | Get one live DAG |
 | `GET /api/v1/operations/runs` | List live DAG runs, optionally filtered by DAG |
@@ -226,6 +232,13 @@ dbt, health, incident, and Grafana consumers but are intentionally absent from
 these canonical endpoints. Pipeline status is derived from enabled state,
 latest canonical run, active alerts, source state, and warning-severity
 validation results. Resolved alerts do not affect current status.
+
+Operational alerts are exposed separately from the legacy data-health incident
+subsystem. Validation execution detail uses the composite product identity of
+check key and Corvetra run ID. Logs expose persisted technical events rather
+than Airflow filesystem logs; structured event details are recursively redacted
+for credential-bearing keys before serialization. Alert lifecycle mutations
+and fabricated occurrence history are outside this read-only API boundary.
 
 ## Security limitations and scope boundaries
 

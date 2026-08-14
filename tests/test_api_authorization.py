@@ -17,21 +17,25 @@ from api.auth_dependencies import (  # noqa: E402
 from api.config import Settings  # noqa: E402
 from api.main import app, create_app  # noqa: E402
 from api.routes.dbt_metadata import get_dbt_metadata_service  # noqa: E402
+from api.routes.alerts import get_alert_service  # noqa: E402
 from api.routes.data_sources import get_data_source_service  # noqa: E402
 from api.routes.health import get_health_service  # noqa: E402
 from api.routes.incidents import get_incident_service  # noqa: E402
 from api.routes.metrics import get_metric_service  # noqa: E402
+from api.routes.logs import get_log_service  # noqa: E402
 from api.routes.pipelines import get_pipeline_service  # noqa: E402
 from api.routes.pipeline_runs import get_pipeline_run_service  # noqa: E402
 from api.routes.schema_snapshots import (  # noqa: E402
     get_schema_snapshot_service,
 )
+from api.routes.validation import get_validation_service  # noqa: E402
 from api.schemas.auth import CurrentUser  # noqa: E402
 from api.schemas.dbt_metadata import (  # noqa: E402
     DbtMetadataListResponse,
     DbtMetadataPaginationMetadata,
 )
 from api.schemas.data_sources import DataSourceListResponse  # noqa: E402
+from api.schemas.alerts import AlertListResponse  # noqa: E402
 from api.schemas.core_resources import PaginationMetadata as CorePaginationMetadata  # noqa: E402
 from api.schemas.health import HealthResponse  # noqa: E402
 from api.schemas.incidents import IncidentListResponse, PaginationMetadata  # noqa: E402
@@ -44,6 +48,8 @@ from api.schemas.pipelines import (  # noqa: E402
     PipelinePaginationMetadata,
 )
 from api.schemas.pipeline_runs import PipelineRunListResponse  # noqa: E402
+from api.schemas.logs import LogEventListResponse  # noqa: E402
+from api.schemas.validation import ValidationListResponse  # noqa: E402
 from api.schemas.schema_snapshots import (  # noqa: E402
     SchemaSnapshotListResponse,
     SchemaSnapshotPaginationMetadata,
@@ -53,6 +59,9 @@ from api.services.incidents import IncidentNotFoundError  # noqa: E402
 from api.services.data_sources import DataSourceNotFoundError  # noqa: E402
 from api.services.pipelines import PipelineNotFoundError  # noqa: E402
 from api.services.pipeline_runs import PipelineRunNotFoundError  # noqa: E402
+from api.services.alerts import AlertNotFoundError  # noqa: E402
+from api.services.logs import LogEventNotFoundError  # noqa: E402
+from api.services.validation import ValidationExecutionNotFoundError  # noqa: E402
 
 USER_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 PROTECTED_PATHS = (
@@ -63,11 +72,17 @@ PROTECTED_PATHS = (
     "/api/v1/data-sources",
     "/api/v1/pipelines",
     "/api/v1/pipeline-runs",
+    "/api/v1/alerts",
+    "/api/v1/validation",
+    "/api/v1/logs",
 )
 CORE_DETAIL_PATHS = (
     "/api/v1/data-sources/events-kafka",
     "/api/v1/pipelines/events-processing",
     "/api/v1/pipeline-runs/run_01J94EVT18",
+    "/api/v1/alerts/ALT-1042",
+    "/api/v1/validation/order-id-unique/runs/run_01J97BIL02",
+    "/api/v1/logs/evt-001",
 )
 
 
@@ -185,6 +200,21 @@ class EmptyOperationalService:
             ),
         )
 
+    async def list_alerts(self, **arguments):
+        self.called = True
+        return AlertListResponse(items=[], pagination=CorePaginationMetadata(
+            limit=arguments["limit"], offset=arguments["offset"], total=0, returned_count=0))
+
+    async def list_validation(self, **arguments):
+        self.called = True
+        return ValidationListResponse(items=[], pagination=CorePaginationMetadata(
+            limit=arguments["limit"], offset=arguments["offset"], total=0, returned_count=0))
+
+    async def list_logs(self, **arguments):
+        self.called = True
+        return LogEventListResponse(items=[], pagination=CorePaginationMetadata(
+            limit=arguments["limit"], offset=arguments["offset"], total=0, returned_count=0))
+
     async def get_data_source(self, key):
         self.called = True
         raise DataSourceNotFoundError
@@ -196,6 +226,18 @@ class EmptyOperationalService:
     async def get_pipeline_run(self, key):
         self.called = True
         raise PipelineRunNotFoundError
+
+    async def get_alert(self, key):
+        self.called = True
+        raise AlertNotFoundError
+
+    async def get_execution(self, check_key, run_id):
+        self.called = True
+        raise ValidationExecutionNotFoundError
+
+    async def get_log(self, key):
+        self.called = True
+        raise LogEventNotFoundError
 
 
 class StubHealthService:
@@ -219,6 +261,9 @@ class EndpointProtectionTests(unittest.TestCase):
             get_data_source_service,
             get_pipeline_service,
             get_pipeline_run_service,
+            get_alert_service,
+            get_validation_service,
+            get_log_service,
         ):
             app.dependency_overrides[dependency] = lambda: self.service
         app.dependency_overrides[get_user_repository] = lambda: None
@@ -358,6 +403,9 @@ class PublicAndOpenApiTests(unittest.TestCase):
             "/api/v1/data-sources/{source_key}",
             "/api/v1/pipelines/{pipeline_key}",
             "/api/v1/pipeline-runs/{corvetra_run_id}",
+            "/api/v1/alerts/{alert_key}",
+            "/api/v1/validation/{check_key}/runs/{corvetra_run_id}",
+            "/api/v1/logs/{event_key}",
         ):
             self.assertEqual(
                 schema["paths"][path]["get"]["security"],
