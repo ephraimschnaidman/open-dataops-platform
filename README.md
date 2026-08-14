@@ -180,6 +180,19 @@ initialization scripts. The one-shot `api-db-init` service applies the same
 transactional, idempotent migration to existing volumes and seeds the three
 roles, but never users.
 
+The same initializer applies the additive Corvetra canonical model through
+`11_create_corvetra_canonical_model.sql` and the deterministic Round 1 seed
+through `12_seed_corvetra_round1.sql`. The model adds first-class environments,
+sources, pipelines, validation checks and executions, operational alerts, and
+structured technical events while preserving the existing Airflow/dbt/health
+metadata tables. Existing pipeline runs retain their UUID, DAG ID, and Airflow
+run ID; canonical product fields remain nullable when no mapping is known.
+
+The Round 1 seed uses deterministic UUIDv5 identities and reserved
+`corvetra_demo__*` DAG mappings. Reapplying it converges immutable canonical
+facts but does not reset source status, pipeline enabled state, validation-check
+configuration, alert lifecycle state, or existing `created_at` values.
+
 Request a token with OAuth2 form data:
 
 ```bash

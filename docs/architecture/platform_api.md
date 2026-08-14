@@ -135,6 +135,14 @@ docker compose exec api python -m platform.api.cli.create_user \
   <username> --role <role>
 ```
 
+The initializer then executes `11_create_corvetra_canonical_model.sql` and
+`12_seed_corvetra_round1.sql`. These transactional, advisory-locked files apply
+the additive canonical metadata model and its deterministic Round 1 records to
+both fresh and existing volumes. The schema migration does not replace existing
+pipeline-run, dbt-result, health, schema-snapshot, data-incident, or incident-
+context identities. Seed reapplication preserves operator-modifiable source,
+pipeline, validation-definition, and alert state.
+
 ## Implemented endpoints
 
 | Endpoint | Purpose |
