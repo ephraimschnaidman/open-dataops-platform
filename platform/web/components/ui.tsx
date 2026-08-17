@@ -36,8 +36,8 @@ export function TechnicalDetails({ items, className = "" }: { items: Array<{ lab
     return <dl className={`grid gap-2 text-xs sm:grid-cols-2 ${className}`}>{items.map((item) => <div key={item.label}><dt className="text-zinc-500">{item.label}</dt><dd className="mt-0.5 font-mono font-medium text-zinc-800">{item.value}</dd></div>)}</dl>;
 }
 
-export function KeyValueGrid({ items }: { items: Array<{ label: string; value: string; mono?: boolean }> }) {
-    return <dl className="grid sm:grid-cols-2">{items.map((item) => <div key={item.label} className="border-b border-zinc-100 px-4 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0"><dt className="text-[11px] text-zinc-500">{item.label}</dt><dd className={`mt-1 truncate text-xs font-medium text-zinc-800 ${item.mono ? "font-mono" : ""}`} title={item.value}>{item.value}</dd></div>)}</dl>;
+export function KeyValueGrid({ items, className = "" }: { items: Array<{ label: string; value: string; mono?: boolean }>; className?: string }) {
+    return <dl className={`grid sm:grid-cols-2 ${className}`}>{items.map((item) => <div key={item.label} className="border-b border-zinc-100 px-4 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0"><dt className="text-[11px] text-zinc-500">{item.label}</dt><dd className={`mt-1 truncate text-xs font-medium text-zinc-800 ${item.mono ? "font-mono" : ""}`} title={item.value}>{item.value}</dd></div>)}</dl>;
 }
 
 export function PageHeader({ title, description, eyebrow, action }: { title: string; description: string; eyebrow?: ReactNode; action?: ReactNode }) {
@@ -78,11 +78,14 @@ const badgeStyles = {
     Cancelled: "bg-zinc-100 text-zinc-600 ring-zinc-500/20",
 };
 
-export function StatusBadge({ status }: { status: keyof typeof badgeStyles }) {
+export function StatusBadge({ status }: { status: string }) {
+    const displayStatus = status === "OPEN" ? "Open" : status === "ACKNOWLEDGED" ? "Acknowledged" : status === "RESOLVED" ? "Resolved" : status;
+    const toneStatus = status === "OPEN" || status === "ACKNOWLEDGED" ? "Warning" : status === "RESOLVED" || status === "Completed" ? "Success" : displayStatus;
+    const style = badgeStyles[toneStatus as keyof typeof badgeStyles] ?? "bg-zinc-100 text-zinc-600 ring-zinc-500/20";
     return (
-        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium ring-1 ring-inset ${badgeStyles[status]}`}>
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium ring-1 ring-inset ${style}`}>
             {status === "Running" ? <LoaderCircle className="h-3 w-3 animate-spin" /> : <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />}
-            {status}
+            {displayStatus}
         </span>
     );
 }

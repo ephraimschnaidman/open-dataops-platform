@@ -1,39 +1,202 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, FileText, MoreHorizontal } from "lucide-react";
-import { DropdownMenu } from "@/components/overlays";
-import { ActualExpectedComparison, ValidationResultBadge, ValidationSeverityBadge } from "@/components/validation-badges";
-import { Breadcrumbs, Button, Card, ErrorState, FilterSelect, KeyValueGrid, PageHeader, Skeleton, StatusBadge, TechnicalDetails } from "@/components/ui";
-import { WAREHOUSE_CUSTOMER_CHECK_ID, type ValidationCheck } from "@/lib/validation-data";
-import { safeInternalReturnTo } from "@/lib/navigation-context";
-import { getDevelopmentQaParam, isDevelopmentQaEnabled } from "@/lib/development-qa";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Activity, FileText } from "lucide-react";
 
-function SampleRecords({ check, unavailable, retry }: { check: ValidationCheck; unavailable: boolean; retry: () => void }) {
-    if (!check.samples) return null;
-    if (unavailable) return <Card title="Sample Failing Records"><div className="p-4"><ErrorState title="Sample records unavailable" description="The validation result remains available." actionLabel="Try Again" technicalDetails={[{ label: "Platform Code", value: "VALIDATION_SAMPLE_UNAVAILABLE" }]} onRetry={retry} /></div></Card>;
-    const fields = Object.keys(check.samples[0]);
-    return <Card title="Sample Failing Records" description="Limited fields needed to explain this validation failure."><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-zinc-100 bg-zinc-50 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{fields.map((field) => <th key={field} className="px-4 py-2.5">{field}</th>)}</tr></thead><tbody>{check.samples.slice(0, 4).map((record, index) => <tr key={index} className="border-b border-zinc-100 last:border-0">{fields.map((field) => <td key={field} className={`px-4 py-3 ${record[field] === "[REDACTED]" ? "font-mono text-zinc-400" : "text-zinc-700"}`}>{record[field]}</td>)}</tr>)}</tbody></table></div><p className="border-t border-zinc-100 px-4 py-2 text-[10px] text-zinc-400">Sensitive values remain redacted. This preview is intentionally limited.</p></Card>;
+import { mapValidation, NOT_AVAILABLE } from "@/lib/core-resource-adapters";
+import type { ValidationExecutionDetail } from "@/lib/api-contract";
+import { useApiQuery } from "@/lib/use-api-query";
+import {
+  Breadcrumbs,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  Skeleton,
+  StatusBadge,
+  TechnicalDetails,
+} from "@/components/ui";
+
+export function ValidationDetailSkeleton() {
+  return (
+    <div className="space-y-7">
+      <Skeleton className="h-20" />
+      <div className="grid gap-7 xl:grid-cols-2">
+        <Skeleton className="h-72" />
+        <Skeleton className="h-72" />
+      </div>
+      <Skeleton className="h-64" />
+    </div>
+  );
 }
 
-export function ValidationDetailPage({ check }: { check: ValidationCheck }) {
-    const router = useRouter(); const params = useSearchParams();
-    const [sampleUnavailable, setSampleUnavailable] = useState(getDevelopmentQaParam(params) === "sample-error");
-    const [backHref, setBackHref] = useState("/validation");
-    useEffect(() => setBackHref(safeInternalReturnTo(params.get("returnTo"), "/validation")), [params]);
-    const viewRun = () => router.push(`/pipeline-runs/${check.runId}`);
-    const viewLogs = () => router.push(`/logs?${new URLSearchParams({ scope: "validation", pipeline: check.pipelineId, run: check.runId, stage: "Validate", code: check.platformCode, environment: check.environment, time: "24h" }).toString()}`);
-    const setQa = (value: string) => { if (!isDevelopmentQaEnabled) return; if (value === "sample-error") setSampleUnavailable(true); else { setSampleUnavailable(false); if (value !== "default") router.push(`/validation/${value}`); } };
-    const isExecutionError = check.result === "Not Evaluated" && check.operationalStatus === "Error";
-    const menu = [{ label: "View Pipeline", onSelect: () => router.push(`/pipelines/${check.pipelineId}`) }, { label: "View Validation Logs", onSelect: viewLogs }];
-    return <div className="animate-enter"><Breadcrumbs items={[{ label: "Validation", href: backHref }, { label: check.name }]} /><PageHeader title={check.name} description={`${check.pipeline} · ${check.dataset}${check.column ? `.${check.column}` : ""}`} eyebrow={<><ValidationResultBadge result={check.result} /><ValidationSeverityBadge severity={check.severity} />{isExecutionError && <StatusBadge status="Error" />}</>} action={<div className="flex flex-wrap items-center gap-2">{process.env.NODE_ENV === "development" && <><span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">QA State</span><FilterSelect label="QA State" value={sampleUnavailable ? "sample-error" : "default"} onChange={setQa} options={[{ label: "Current detail", value: "default" }, { label: "Passed detail", value: "customer-id-not-null" }, { label: "Warning detail", value: "customer-email-null-rate" }, { label: "Blocking detail", value: "order-id-unique" }, { label: "Execution failure", value: WAREHOUSE_CUSTOMER_CHECK_ID }, { label: "Sample section error", value: "sample-error" }]} /></>}<Button onClick={viewRun}>{check.result === "Failed" && check.severity === "Blocking" ? "View Failed Run" : "View Run"}</Button><Button onClick={viewLogs}><FileText className="h-3.5 w-3.5" /> View Logs</Button><DropdownMenu items={menu}><Button aria-label="More validation actions" className="px-2.5"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenu></div>} />
-        <Card title="Validation Result" description="Evaluation outcome, technical codes, and recommended response."><div className="p-4"><div className={`rounded-lg border p-4 ${isExecutionError ? "border-rose-100 bg-rose-50/60" : check.result === "Failed" && check.severity === "Blocking" ? "border-rose-100 bg-rose-50/60" : check.result === "Failed" ? "border-amber-100 bg-amber-50/60" : "border-emerald-100 bg-emerald-50/60"}`}><div className="flex flex-wrap gap-6"><div><p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Status</p><ValidationResultBadge result={check.result} /></div><div><p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Severity</p><ValidationSeverityBadge severity={check.severity} /></div>{isExecutionError && <div><p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Operational Status</p><StatusBadge status="Error" /></div>}</div><p className="mt-4 text-sm font-medium leading-6 text-zinc-900">{check.message}</p><TechnicalDetails className="mt-4" items={[{ label: "Platform Code", value: check.platformCode }, ...(check.ruleCode ? [{ label: isExecutionError ? "Vendor Code" : "Vendor / Rule Code", value: check.ruleCode }] : [])]} />{check.pipelineEffect && <div className="mt-4 rounded-md border border-rose-200 bg-white/60 p-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-rose-700">Pipeline Effect</p><p className="mt-1 text-xs font-medium text-rose-900">{check.pipelineEffect}</p></div>}{check.recommendedAction && <div className="mt-4 border-t border-current/10 pt-4"><p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Recommended Action</p><p className="mt-1 text-xs leading-5 text-zinc-700">{check.recommendedAction}</p><div className="mt-3 flex gap-2"><Button onClick={viewRun}>{check.severity === "Blocking" && check.result === "Failed" ? "View Failed Run" : "View Run"}</Button><Button onClick={viewLogs}>View Validation Logs</Button></div></div>}</div></div></Card>
-        <div className="mt-7 grid gap-7 xl:grid-cols-[0.9fr_1.1fr]"><Card title="Actual vs Expected" description="Observed value compared with the configured quality rule."><div className="p-4"><ActualExpectedComparison actual={check.actual} expected={check.expected} result={check.result} />{check.affectedRecords !== undefined && <dl className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-md bg-zinc-50 p-3"><dt className="text-[11px] text-zinc-500">Affected Records</dt><dd className="mt-1 text-lg font-semibold text-zinc-900">{check.affectedRecords.toLocaleString()}</dd></div><div className="rounded-md bg-zinc-50 p-3"><dt className="text-[11px] text-zinc-500">Affected Percentage</dt><dd className="mt-1 text-lg font-semibold text-zinc-900">{check.affectedPercentage || "—"}</dd></div></dl>}{check.recordsEvaluated !== undefined && <p className="mt-4 text-xs text-zinc-500">Records Evaluated: <strong className="text-zinc-800">{check.recordsEvaluated.toLocaleString()}</strong></p>}</div></Card><Card title="Check Context" description="Pipeline, resource, and evaluation context."><KeyValueGrid items={[{ label: "Pipeline", value: check.pipeline }, { label: "Pipeline Run", value: check.runLabel, mono: true }, { label: "Environment", value: check.environment }, { label: "Data Source", value: check.source }, { label: "Dataset", value: check.dataset, mono: true }, { label: "Column", value: check.column || "Not applicable", mono: Boolean(check.column) }, { label: "Check Type", value: check.checkType }, { label: "Severity", value: check.severity }, { label: "Evaluation timestamp", value: check.evaluatedAt }]} /></Card></div>
-        {check.samples && <div className="mt-7"><SampleRecords check={check} unavailable={sampleUnavailable} retry={() => setSampleUnavailable(false)} /></div>}
-        <div className="mt-7"><Card title="Recent Results" description={`Recent evaluations of ${check.name}.`}><div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left"><thead><tr className="border-b border-zinc-100 bg-zinc-50 text-[10px] font-semibold uppercase tracking-wider text-zinc-400"><th className="px-4 py-2.5">Run</th><th className="px-3 py-2.5">Result</th><th className="px-3 py-2.5">Actual</th><th className="px-3 py-2.5">Evaluated</th></tr></thead><tbody>{check.history.map((item, index) => <tr key={`${item.runLabel}-${index}`} tabIndex={item.runId ? 0 : undefined} onClick={item.runId ? () => router.push(`/pipeline-runs/${item.runId}`) : undefined} onKeyDown={item.runId ? (event) => { if (event.key === "Enter" || event.key === " ") router.push(`/pipeline-runs/${item.runId}`); } : undefined} className={`border-b border-zinc-100 text-xs last:border-0 ${item.runId ? "cursor-pointer hover:bg-zinc-50" : ""}`}><td className={`px-4 py-3 font-mono font-medium ${item.runId ? "text-indigo-600" : "text-zinc-500"}`}>{item.runLabel}</td><td className="px-3 py-3"><ValidationResultBadge result={item.result} /></td><td className="px-3 py-3 font-medium text-zinc-800">{item.actual}</td><td className="px-3 py-3 text-zinc-500">{item.evaluated}</td></tr>)}</tbody></table></div></Card></div>
-        {isExecutionError && <div className="mt-5 flex items-start gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-xs text-zinc-700"><AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" /><p>This check was <strong>not evaluated</strong>. This is a validation-system execution error, not evidence of bad data.</p></div>}
-    </div>;
-}
+export function ValidationDetailPage({ checkKey }: { checkKey: string }) {
+  const params = useSearchParams();
+  const runId = params.get("run");
+  const request = useApiQuery<ValidationExecutionDetail>(
+    runId
+      ? `/api/v1/validation/${encodeURIComponent(checkKey)}/runs/${encodeURIComponent(runId)}`
+      : null,
+  );
 
-export function ValidationDetailSkeleton() { return <div className="space-y-7"><Skeleton className="h-4 w-72" /><div><Skeleton className="h-7 w-72" /><Skeleton className="mt-2 h-4 w-80" /></div><Skeleton className="h-80" /><div className="grid gap-7 xl:grid-cols-2"><Skeleton className="h-64" /><Skeleton className="h-64" /></div><Skeleton className="h-72" /></div>; }
+  if (!runId) {
+    return (
+      <ErrorState
+        title="Validation execution identity required"
+        description="A validation detail link must include its canonical run ID."
+        technicalDetails={[{ label: "Platform Code", value: "VALIDATION_RUN_REQUIRED" }]}
+      />
+    );
+  }
+
+  if (request.loading && !request.data) return <ValidationDetailSkeleton />;
+
+  if (request.error) {
+    const title =
+      request.error.kind === "not_found"
+        ? "Validation execution not found"
+        : request.error.kind === "permission"
+          ? "Permission denied"
+          : "Validation execution couldn't be loaded";
+
+    return (
+      <>
+        <Breadcrumbs items={[{ label: "Validation", href: "/validation" }, { label: checkKey }]} />
+        <ErrorState
+          title={title}
+          description={request.error.message}
+          actionLabel={request.error.retryable ? "Try Again" : undefined}
+          onRetry={request.error.retryable ? request.retry : undefined}
+          technicalDetails={[{ label: "Platform Code", value: request.error.code }]}
+        />
+      </>
+    );
+  }
+
+  if (!request.data) return null;
+
+  const item = mapValidation(request.data);
+
+  return (
+    <div className="animate-enter">
+      <Breadcrumbs items={[{ label: "Validation", href: "/validation" }, { label: item.name }]} />
+      <PageHeader
+        title={item.name}
+        description={item.message}
+        eyebrow={
+          <>
+            Check definition: <span className="font-mono">{item.checkKey}</span> · Execution:{" "}
+            <span className="font-mono">{item.runId}</span>
+            <StatusBadge status={item.result} />
+            <StatusBadge status={item.severity} />
+          </>
+        }
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/pipeline-runs/${item.runId}`}><Button>View Run</Button></Link>
+            <Link href={`/pipelines/${item.pipelineId}`}><Button>View Pipeline</Button></Link>
+            <Link href={`/data-sources/${item.sourceId}`}><Button>View Source</Button></Link>
+            <Link href={`/logs?check=${encodeURIComponent(item.checkKey)}&run=${encodeURIComponent(item.runId)}`}>
+              <Button><FileText className="h-3.5 w-3.5" /> View Evidence</Button>
+            </Link>
+          </div>
+        }
+      />
+
+      <div className="grid gap-7 xl:grid-cols-2">
+        <Card title="Check Definition" description="Stable validation-check identity and configured semantics.">
+          <div className="p-4">
+            <TechnicalDetails items={[
+              { label: "Check key", value: item.checkKey },
+              { label: "Name", value: item.name },
+              { label: "Check type", value: item.checkType },
+              { label: "Dataset", value: item.datasetName },
+              { label: "Column", value: item.columnName },
+              { label: "Severity", value: item.severity },
+            ]} />
+          </div>
+        </Card>
+        <Card title="Execution Result" description="Result for the canonical pipeline run.">
+          <div className="p-4">
+            <TechnicalDetails items={[
+              { label: "Run ID", value: item.runId },
+              { label: "Result", value: item.result },
+              { label: "Stage", value: item.stage },
+              { label: "Evaluated", value: item.evaluatedAt },
+              { label: "Actual", value: item.actual },
+              { label: "Expected", value: item.expected },
+            ]} />
+          </div>
+        </Card>
+      </div>
+
+      <div className="mt-7 grid gap-7 xl:grid-cols-2">
+        <Card title="Technical Semantics" description="Backend codes remain separate.">
+          <div className="p-4">
+            <TechnicalDetails items={[
+              { label: "Platform Code", value: item.platformCode },
+              { label: "Vendor Code", value: item.vendorCode ?? NOT_AVAILABLE },
+              { label: "Rule Code", value: item.ruleCode ?? NOT_AVAILABLE },
+              { label: "Environment", value: item.environment },
+            ]} />
+          </div>
+        </Card>
+        <Card title="Related Alerts" description="Alerts associated with this validation execution.">
+          {request.data.related_alerts.length ? (
+            <div className="space-y-3 p-4">
+              {request.data.related_alerts.map((alert) => (
+                <Link
+                  key={alert.alert_key}
+                  href={`/alerts/${alert.alert_key}`}
+                  className="block rounded border p-3 text-xs hover:bg-zinc-50"
+                >
+                  <div className="flex justify-between">
+                    <strong>{alert.title}</strong>
+                    <StatusBadge status={alert.status} />
+                  </div>
+                  <p className="mt-2 font-mono text-[10px]">
+                    {alert.alert_key} · {alert.platform_code}
+                    {alert.rule_code
+                      ? ` · Rule: ${alert.rule_code}`
+                      : alert.vendor_code
+                        ? ` · Vendor: ${alert.vendor_code}`
+                        : ""}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="p-4">
+              <EmptyState title="No related alerts" description="No alerts were returned for this execution." icon={<Activity className="h-4 w-4" />} />
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="mt-7">
+        <Card title="Technical Evidence" description={`${request.data.technical_evidence_count} related events.`}>
+          {request.data.technical_evidence.length ? (
+            <ol className="space-y-4 p-4">
+              {request.data.technical_evidence.map((event) => (
+                <li key={event.event_key} className="border-l-2 pl-4 text-xs">
+                  <p className="font-medium">{event.message}</p>
+                  <p className="mt-1 font-mono text-[10px]">
+                    {event.platform_code}
+                    {event.vendor_code ? ` · Vendor: ${event.vendor_code}` : ""}
+                    {event.rule_code ? ` · Rule: ${event.rule_code}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="p-4">
+              <EmptyState title="No technical evidence" description="No evidence was returned." icon={<Activity className="h-4 w-4" />} />
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
