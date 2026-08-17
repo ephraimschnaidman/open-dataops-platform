@@ -1,1492 +1,365 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-    Activity,
-    AlertTriangle,
-    CheckCircle2,
-    Clock3,
-    Database,
-    FileText,
-    Gauge,
-    RefreshCw,
-    ShieldCheck,
-    TimerReset,
-    TriangleAlert,
+  Activity,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
+  Database,
+  Gauge,
+  RefreshCw,
+  ShieldAlert,
+  TimerReset,
 } from "lucide-react";
-import { TrendChart } from "@/components/trend-chart";
+
+import type { MonitoringResponse } from "@/lib/api-contract";
 import {
-    Button,
-    Card,
-    EmptyState,
-    ErrorState,
-    FilterSelect,
-    MetricCard,
-    OperationalStatus,
-    PageHeader,
-    Skeleton,
-    StatusBadge,
+  activeIssueHref,
+  activityHref,
+  metricTone,
+  MONITORING_WINDOWS,
+  presentOverallState,
+  presentMetric,
+  type MonitoringWindow,
+} from "@/lib/aggregation-adapters";
+import { useApiQuery } from "@/lib/use-api-query";
+import {
+  Breadcrumbs,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  FilterSelect,
+  MetricCard,
+  OperationalStatus,
+  PageHeader,
+  Skeleton,
+  StatusBadge,
+  TechnicalDetails,
 } from "@/components/ui";
-import {
-    activeIssues,
-    metricsByRange,
-    pipelineHealth,
-    recentEvents,
-    scheduleIssues,
-    sortActiveIssues,
-    sourceHealth,
-    timeRangeOptions,
-    trendsByRange,
-    type ActiveIssue,
-    type MonitoringEnvironment,
-    type MonitoringHealthStatus,
-    type MonitoringQaState,
-    type MonitoringResourceType,
-    type MonitoringTimeRange,
-} from "@/lib/monitoring-data";
-import {
-    getDevelopmentQaParam,
-    isDevelopmentQaEnabled,
-} from "@/lib/development-qa";
-import { useEnvironmentContext } from "@/lib/environment-context";
 
-type SectionKey =
-    | "issues"
-    | "pipelines"
-    | "reliability"
-    | "runtime"
-    | "schedule"
-    | "sources"
-    | "events";
+type ResourceType = "all" | "pipeline" | "source";
+type ResourceOption = { key: string; name: string };
 
-function SectionError({
-    title,
-    code,
-    onRetry,
-}: {
-    title: string;
-    code: string;
-    onRetry: () => void;
-}) {
-    return (
-        <ErrorState
-            title={`${title} unavailable`}
-            description={`We couldn't retrieve ${title.toLowerCase()}.`}
-            actionLabel="Try Again"
-            technicalDetails={[
-                { label: "Platform Code", value: code },
-                { label: "Vendor / HTTP Code", value: "503" },
-            ]}
-            onRetry={onRetry}
-        />
-    );
+const windowOptions = MONITORING_WINDOWS.map((value) => ({
+  value,
+  label: value === "1h" ? "Last 1 hour" : `Last ${value.replace("d", " days").replace("h", " hours")}`,
+}));
+const environmentOptions = [
+  { value: "all", label: "All Environments" },
+  { value: "production", label: "Production" },
+  { value: "staging", label: "Staging" },
+  { value: "development", label: "Development" },
+];
+const metricDefinitions = [
+  { key: "pipeline_success_rate", label: "Pipeline Success Rate", icon: Gauge },
+  { key: "successful_runs", label: "Successful Runs", icon: CheckCircle2 },
+  { key: "failed_runs", label: "Failed Runs", icon: CircleAlert },
+  { key: "average_runtime", label: "Average Runtime", icon: Clock3 },
+  { key: "schedule_adherence", label: "Schedule Adherence", icon: TimerReset },
+  { key: "healthy_sources", label: "Healthy Sources", icon: Database },
+] as const;
+
+function Row({ children }: { children: React.ReactNode }) {
+  return <div className="grid gap-2 border-b border-zinc-100 px-4 py-3 last:border-0 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">{children}</div>;
 }
 
-function OperationalMetrics({
-    range,
-    resourceType,
-    critical,
-}: {
-    range: MonitoringTimeRange;
-    resourceType: MonitoringResourceType;
-    critical: boolean;
-}) {
-    const metrics = metricsByRange[range];
-    const pipelineOnly = resourceType === "Pipelines";
-    const sourcesOnly = resourceType === "Data Sources";
-    const runtime = critical ? "2m 54s" : metrics.avgRuntime;
-    const successRateDelta =
-        Number(metrics.successRate.replace("%", "")) -
-        Number(metrics.previousSuccessRate.replace("%", ""));
-    const cards = [
-        {
-            label: "Pipeline Success Rate",
-            value: sourcesOnly ? "—" : metrics.successRate,
-            detail: sourcesOnly
-                ? "Not applicable"
-                : `${successRateDelta >= 0 ? "↑" : "↓"} ${Math.abs(successRateDelta).toFixed(1)}% vs previous period`,
-            icon: Gauge,
-            tone:
-                successRateDelta >= 0
-                    ? ("positive" as const)
-                    : ("warning" as const),
-        },
-        {
-            label: "Successful Runs",
-            value: sourcesOnly ? "—" : String(metrics.successful),
-            detail: sourcesOnly ? "Not applicable" : metrics.successfulDelta,
-            icon: CheckCircle2,
-            tone: "positive" as const,
-        },
-        {
-            label: "Failed Runs",
-            value: sourcesOnly ? "—" : String(metrics.failed),
-            detail: sourcesOnly ? "Not applicable" : "Require investigation",
-            icon: TriangleAlert,
-            tone: "danger" as const,
-        },
-        {
-            label: "Avg Runtime",
-            value: sourcesOnly ? "—" : runtime,
-            detail: sourcesOnly
-                ? "Not applicable"
-                : critical
-                  ? "+49s vs previous period"
-                  : "+13s vs previous period",
-            icon: Clock3,
-            tone: critical ? ("warning" as const) : ("neutral" as const),
-        },
-        {
-            label: "Schedule Adherence",
-            value: sourcesOnly ? "—" : metrics.adherence,
-            detail: sourcesOnly ? "Not applicable" : "Inside accepted window",
-            icon: TimerReset,
-            tone: "positive" as const,
-        },
-        {
-            label: "Healthy Sources",
-            value: pipelineOnly ? "—" : metrics.healthySources,
-            detail: pipelineOnly
-                ? "Not applicable"
-                : "One source needs attention",
-            icon: Database,
-            tone: "warning" as const,
-        },
-    ];
-    return (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-            {cards.map((card) => (
-                <MetricCard key={card.label} {...card} />
-            ))}
-        </div>
-    );
-}
-
-function ActiveIssues({
-    issues,
-    onAction,
-}: {
-    issues: ActiveIssue[];
-    onAction: (issue: ActiveIssue, kind?: "run" | "logs") => void;
-}) {
-    if (!issues.length)
-        return (
-            <EmptyState
-                title="No active issues"
-                description="All monitored pipelines and data sources are operating normally."
-                icon={<ShieldCheck className="h-4 w-4" />}
-            />
-        );
-    return (
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-card">
-            {issues.map((issue) => (
-                <article
-                    key={issue.id}
-                    className="border-b border-zinc-100 p-4 last:border-0"
-                >
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-                        <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                                <StatusBadge status={issue.severity} />
-                                <button
-                                    onClick={() => onAction(issue)}
-                                    className="text-sm font-semibold text-zinc-900 hover:text-indigo-700"
-                                >
-                                    {issue.resource}
-                                </button>
-                                <span className="text-xs text-zinc-400">
-                                    {issue.since}
-                                </span>
-                            </div>
-                            <p className="mt-2 text-sm font-medium text-zinc-800">
-                                {issue.issue}
-                            </p>
-                            <p className="mt-1 text-xs leading-5 text-zinc-600">
-                                {issue.message}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-zinc-500">
-                                <span>{issue.platformCode}</span>
-                                {issue.vendorCode && (
-                                    <span>{issue.vendorCode}</span>
-                                )}
-                            </div>
-                            <p className="mt-2 text-xs text-zinc-500">
-                                <span className="font-medium text-zinc-700">
-                                    Recommended Action:
-                                </span>{" "}
-                                {issue.recommendedAction}
-                            </p>
-                        </div>
-                        <div className="flex shrink-0 flex-wrap gap-2">
-                            <Button onClick={() => onAction(issue)}>
-                                {issue.action}
-                            </Button>
-                            {issue.runId && (
-                                <Button
-                                    variant="ghost"
-                                    onClick={() => onAction(issue, "run")}
-                                >
-                                    View Failed Run
-                                </Button>
-                            )}
-                            {issue.severity === "Critical" && (
-                                <Button
-                                    variant="ghost"
-                                    onClick={() => onAction(issue, "logs")}
-                                >
-                                    <FileText className="h-3.5 w-3.5" /> View
-                                    Logs
-                                </Button>
-                            )}
-                        </div>
-                    </div>
-                </article>
-            ))}
-        </div>
-    );
-}
-
-function PipelineHealthTable({
-    rows,
-    onOpen,
-}: {
-    rows: typeof pipelineHealth;
-    onOpen: (id: string) => void;
-}) {
-    return (
-        <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left">
-                <thead>
-                    <tr className="border-b border-zinc-100 bg-zinc-50/60 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                        <th className="px-4 py-2.5">Pipeline</th>
-                        <th className="px-3 py-2.5">Status</th>
-                        <th className="px-3 py-2.5">Success Rate</th>
-                        <th className="px-3 py-2.5">Last Run</th>
-                        <th className="hidden px-3 py-2.5 lg:table-cell">
-                            Avg Runtime
-                        </th>
-                        <th className="hidden px-3 py-2.5 xl:table-cell">
-                            Schedule
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map((pipeline) => (
-                        <tr
-                            key={pipeline.id}
-                            tabIndex={0}
-                            onClick={() => onOpen(pipeline.id)}
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ")
-                                    onOpen(pipeline.id);
-                            }}
-                            className="cursor-pointer border-b border-zinc-100 text-xs last:border-0 hover:bg-zinc-50"
-                        >
-                            <td className="px-4 py-3">
-                                <span className="font-medium text-zinc-800">
-                                    {pipeline.name}
-                                </span>
-                                {pipeline.platformCode && (
-                                    <span className="mt-1 block font-mono text-[10px] text-zinc-500">
-                                        {pipeline.platformCode}
-                                    </span>
-                                )}
-                            </td>
-                            <td className="px-3 py-3">
-                                <StatusBadge status={pipeline.status} />
-                            </td>
-                            <td className="px-3 py-3 font-medium tabular-nums text-zinc-700">
-                                {pipeline.successRate}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-3 text-zinc-500">
-                                {pipeline.lastRun}
-                            </td>
-                            <td className="hidden px-3 py-3 tabular-nums text-zinc-600 lg:table-cell">
-                                {pipeline.avgRuntime}
-                            </td>
-                            <td className="hidden px-3 py-3 text-zinc-600 xl:table-cell">
-                                {pipeline.schedule}
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
-}
-
-function SourceHealthTable({
-    rows,
-    onOpen,
-}: {
-    rows: typeof sourceHealth;
-    onOpen: (id?: string) => void;
-}) {
-    return (
-        <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] text-left">
-                <thead>
-                    <tr className="border-b border-zinc-100 bg-zinc-50/60 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                        <th className="px-4 py-2.5">Source</th>
-                        <th className="px-3 py-2.5">Status</th>
-                        <th className="hidden px-3 py-2.5 md:table-cell">
-                            Availability
-                        </th>
-                        <th className="hidden px-3 py-2.5 lg:table-cell">
-                            Avg Latency
-                        </th>
-                        <th className="px-3 py-2.5">Last Check</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map((source) => (
-                        <tr
-                            key={source.name}
-                            tabIndex={source.id ? 0 : undefined}
-                            onClick={() => onOpen(source.id)}
-                            onKeyDown={(event) => {
-                                if (
-                                    source.id &&
-                                    (event.key === "Enter" || event.key === " ")
-                                )
-                                    onOpen(source.id);
-                            }}
-                            className={`${source.id ? "cursor-pointer hover:bg-zinc-50" : ""} border-b border-zinc-100 text-xs last:border-0`}
-                        >
-                            <td className="px-4 py-3">
-                                <span className="font-medium text-zinc-800">
-                                    {source.name}
-                                </span>
-                                {source.platformCode && (
-                                    <span className="mt-1 block font-mono text-[10px] text-zinc-500">
-                                        {source.platformCode}
-                                    </span>
-                                )}
-                            </td>
-                            <td className="px-3 py-3">
-                                <StatusBadge status={source.status} />
-                            </td>
-                            <td className="hidden px-3 py-3 tabular-nums text-zinc-600 md:table-cell">
-                                {source.availability}
-                            </td>
-                            <td className="hidden px-3 py-3 tabular-nums text-zinc-600 lg:table-cell">
-                                {source.latency}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-3 text-zinc-500">
-                                {source.lastCheck}
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
+function Cell({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="min-w-0"><p className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400 md:hidden">{label}</p><div className="mt-0.5 truncate text-xs text-zinc-700 md:mt-0">{children}</div></div>;
 }
 
 export function MonitoringPage() {
-    const router = useRouter();
-    const { currentEnvironment } = useEnvironmentContext();
-    const [timeRange, setTimeRange] = useState<MonitoringTimeRange>("24h");
-    const [environment, setEnvironment] =
-        useState<MonitoringEnvironment>(currentEnvironment);
-    const [resourceType, setResourceType] =
-        useState<MonitoringResourceType>("All");
-    const [resourceId, setResourceId] = useState("All");
-    const [qaState, setQaState] = useState<MonitoringQaState>("warning");
-    const [lastUpdated, setLastUpdated] = useState("10:43 AM");
-    const [notice, setNotice] = useState("");
-    const [sectionErrors, setSectionErrors] = useState<
-        Record<SectionKey, boolean>
-    >({
-        issues: false,
-        pipelines: false,
-        reliability: false,
-        runtime: false,
-        schedule: false,
-        sources: false,
-        events: false,
+  const params = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const requestedWindow = params.get("time");
+  const [windowValue, setWindowValue] = useState<MonitoringWindow>(
+    MONITORING_WINDOWS.includes(requestedWindow as MonitoringWindow)
+      ? (requestedWindow as MonitoringWindow)
+      : "24h",
+  );
+  const [environment, setEnvironment] = useState(params.get("environment") ?? "production");
+  const [resourceType, setResourceType] = useState<ResourceType>(
+    params.get("resourceType") === "pipeline" || params.get("resourceType") === "source"
+      ? (params.get("resourceType") as ResourceType)
+      : "all",
+  );
+  const [resource, setResource] = useState(params.get("resource") ?? "all");
+  const [pipelineOptions, setPipelineOptions] = useState<ResourceOption[]>([]);
+  const [sourceOptions, setSourceOptions] = useState<ResourceOption[]>([]);
+
+  const query = {
+    window: windowValue,
+    environment: environment === "all" ? undefined : environment,
+    pipeline: resourceType === "pipeline" && resource !== "all" ? resource : undefined,
+    source: resourceType === "source" && resource !== "all" ? resource : undefined,
+  };
+  const request = useApiQuery<MonitoringResponse>("/api/v1/monitoring", query);
+
+  useEffect(() => {
+    if (!request.data) return;
+    setPipelineOptions((current) => {
+      const options = new Map(current.map((item) => [item.key, item]));
+      request.data?.pipeline_health.items.forEach((item) =>
+        options.set(item.pipeline_key, { key: item.pipeline_key, name: item.name }),
+      );
+      return [...options.values()];
     });
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const requestedEnvironment = params.get("environment");
-        const requestedType = params.get("resourceType");
-        const requestedTime = params.get("time");
-        const nextType =
-            requestedType === "Pipelines" || requestedType === "Data Sources"
-                ? requestedType
-                : "All";
-        const candidates =
-            nextType === "Pipelines"
-                ? pipelineHealth
-                : nextType === "Data Sources"
-                  ? sourceHealth
-                  : [];
-        const requestedResource = params.get("resource");
-        setEnvironment(
-            requestedEnvironment &&
-                ["Production", "Staging", "Development"].includes(
-                    requestedEnvironment,
-                )
-                ? (requestedEnvironment as MonitoringEnvironment)
-                : currentEnvironment,
-        );
-        setResourceType(nextType);
-        setResourceId(
-            requestedResource &&
-                candidates.some((item) => item.id === requestedResource)
-                ? requestedResource
-                : "All",
-        );
-        if (
-            requestedTime &&
-            timeRangeOptions.some((option) => option.value === requestedTime)
-        )
-            setTimeRange(requestedTime as MonitoringTimeRange);
-        const qa = getDevelopmentQaParam(params) as MonitoringQaState | null;
-        if (
-            qa &&
-            [
-                "warning",
-                "healthy",
-                "critical",
-                "no-issues",
-                "empty",
-                "stale",
-                "error",
-                "partial",
-            ].includes(qa)
-        ) {
-            setQaState(qa);
-            if (qa === "partial")
-                setSectionErrors((current) => ({ ...current, sources: true }));
-        }
-    }, [currentEnvironment]);
-    const healthyVariant = qaState === "healthy" || qaState === "no-issues";
-    const showPipelines = resourceType !== "Data Sources";
-    const showSources = resourceType !== "Pipelines";
-    const filteredPipelines = pipelineHealth
-        .filter(
-            (item) =>
-                (environment === "All" || item.environment === environment) &&
-                (resourceId === "All" || item.id === resourceId),
-        )
-        .map((item) =>
-            healthyVariant && item.status !== "Disabled"
-                ? {
-                      ...item,
-                      status: "Healthy" as const,
-                      platformCode: undefined,
-                  }
-                : item,
-        );
-    const filteredSources = sourceHealth
-        .filter(
-            (item) =>
-                (environment === "All" || item.environment === environment) &&
-                (resourceId === "All" || item.id === resourceId),
-        )
-        .map((item) =>
-            healthyVariant && item.status !== "Disabled"
-                ? {
-                      ...item,
-                      status: "Healthy" as const,
-                      platformCode: undefined,
-                      vendorCode: undefined,
-                  }
-                : item,
-        );
-    const filteredSchedules = scheduleIssues.filter(
-        (item) =>
-            (environment === "All" || item.environment === environment) &&
-            (resourceId === "All" || item.pipelineId === resourceId),
-    );
-    const filteredIssues = useMemo(
-        () =>
-            sortActiveIssues(
-                activeIssues.filter(
-                    (issue) =>
-                        (resourceType === "All" ||
-                            (resourceType === "Pipelines"
-                                ? issue.resourceType === "Pipeline"
-                                : issue.resourceType === "Data Source")) &&
-                        (environment === "All" ||
-                            environment === "Production") &&
-                        (resourceId === "All" ||
-                            issue.resourceId === resourceId),
-                ),
-            ),
-        [environment, resourceType, resourceId],
-    );
-    const visibleIssues =
-        qaState === "healthy" || qaState === "no-issues" ? [] : filteredIssues;
-    const filteredEvents = recentEvents.filter(
-        (event) =>
-            (resourceType === "All" ||
-                (resourceType === "Pipelines"
-                    ? event.resourceType === "Pipeline"
-                    : event.resourceType === "Data Source")) &&
-            (environment === "All" || event.environment === environment) &&
-            (resourceId === "All" || event.resourceId === resourceId) &&
-            (!healthyVariant || event.tone === "success"),
-    );
-    const hasData =
-        qaState !== "empty" &&
-        ((showPipelines && filteredPipelines.length > 0) ||
-            (showSources && filteredSources.length > 0));
-    const isFiltered =
-        environment !== "All" ||
-        resourceType !== "All" ||
-        resourceId !== "All" ||
-        timeRange !== "24h";
-    const healthy = healthyVariant || (!visibleIssues.length && hasData);
-    const healthStatus: MonitoringHealthStatus =
-        qaState === "critical" ? "Critical" : healthy ? "Healthy" : "Warning";
-    const healthResult =
-        healthStatus === "Healthy"
-            ? {
-                  status: "Success" as const,
-                  platformCode: "PLATFORM_HEALTHY",
-                  message: "All monitored resources are operating normally.",
-                  recommendedAction: "No corrective action is required.",
-              }
-            : healthStatus === "Critical"
-              ? {
-                    status: "Error" as const,
-                    platformCode: "PLATFORM_CRITICAL",
-                    vendorCode: "HTTP 503",
-                    message: "A critical platform resource is unavailable.",
-                    recommendedAction:
-                        "Investigate the affected pipeline and source immediately.",
-                }
-              : {
-                    status: "Warning" as const,
-                    platformCode: "PLATFORM_DEGRADED",
-                    message: "3 monitored resources require attention.",
-                    recommendedAction: "Review the affected resources below.",
-                };
-    const clearFilters = () => {
-        setEnvironment("All");
-        setResourceType("All");
-        setResourceId("All");
-        setTimeRange("24h");
-        window.history.replaceState(null, "", window.location.pathname);
+    setSourceOptions((current) => {
+      const options = new Map(current.map((item) => [item.key, item]));
+      request.data?.source_health.items.forEach((item) =>
+        options.set(item.source_key, { key: item.source_key, name: item.name }),
+      );
+      return [...options.values()];
+    });
+  }, [request.data]);
+
+  const syncUrl = (next: {
+    window?: MonitoringWindow;
+    environment?: string;
+    resourceType?: ResourceType;
+    resource?: string;
+  }) => {
+    const nextParams = new URLSearchParams(params.toString());
+    const values = {
+      time: next.window ?? windowValue,
+      environment: next.environment ?? environment,
+      resourceType: next.resourceType ?? resourceType,
+      resource: next.resource ?? resource,
     };
-    const syncFilter = (key: string, value: string, defaultValue: string) => {
-        const params = new URLSearchParams(window.location.search);
-        if (value === defaultValue) params.delete(key);
-        else params.set(key, value);
-        const query = params.toString();
-        window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
-    };
-    const resourceOptions =
-        resourceType === "Pipelines"
-            ? pipelineHealth.map((item) => ({
-                  label: item.name,
-                  value: item.id,
-              }))
-            : resourceType === "Data Sources"
-              ? sourceHealth
-                    .map((item) => ({ label: item.name, value: item.id ?? "" }))
-                    .filter((item) => item.value)
-              : [];
-    const showQaSelector = isDevelopmentQaEnabled;
-    const selectQaState = (value: string) => {
-        if (!isDevelopmentQaEnabled) return;
-        const nextState =
-            value === "default" ? "warning" : (value as MonitoringQaState);
-        const params = new URLSearchParams(window.location.search);
-        if (value === "default") params.delete("qa");
-        else params.set("qa", value);
-        const query = params.toString();
-        window.history.replaceState(
-            null,
-            "",
-            `${window.location.pathname}${query ? `?${query}` : ""}`,
-        );
-        setQaState(nextState);
-        setSectionErrors({
-            issues: false,
-            pipelines: false,
-            reliability: false,
-            runtime: false,
-            schedule: false,
-            sources: nextState === "partial",
-            events: false,
-        });
-    };
-    const placeholder = (message: string) => {
-        setNotice(message);
-        window.setTimeout(() => setNotice(""), 3000);
-    };
-    const setSectionHealthy = (section: SectionKey) =>
-        setSectionErrors((current) => ({ ...current, [section]: false }));
-    const issueAction = (issue: ActiveIssue, kind?: "run" | "logs") => {
-        if (kind === "logs") {
-            router.push(
-                `/logs?${new URLSearchParams({ scope: issue.resourceType === "Data Source" ? "source" : issue.runId ? "run" : "pipeline", [issue.resourceType === "Data Source" ? "source" : "pipeline"]: issue.resourceId, ...(issue.runId ? { run: issue.runId } : {}), code: issue.platformCode, environment: "Production", time: timeRange }).toString()}`,
-            );
-            return;
-        }
-        if (kind === "run" && issue.runId) {
-            router.push(`/pipeline-runs/${issue.runId}`);
-            return;
-        }
-        if (issue.action === "Review Validation") {
-            router.push(
-                `/validation?${new URLSearchParams({ pipeline: issue.resourceId, ...(issue.runId ? { run: issue.runId } : {}), result: "Failed" }).toString()}`,
-            );
-            return;
-        }
-        router.push(
-            issue.resourceType === "Data Source"
-                ? `/data-sources/${issue.resourceId}`
-                : `/pipelines/${issue.resourceId}`,
-        );
-    };
-    if (qaState === "error")
-        return (
-            <div className="animate-enter">
-                <PageHeader
-                    title="Monitoring"
-                    description="Monitor pipeline reliability, execution health, and connected systems."
-                />
-                <Card>
-                    <div className="p-4">
-                        <OperationalStatus
-                            statusLabel="Failed"
-                            result={{
-                                status: "Error",
-                                platformCode: "MONITORING_UNAVAILABLE",
-                                vendorCode: "503",
-                                message:
-                                    "The platform could not retrieve operational monitoring data.",
-                                recommendedAction:
-                                    "Try loading Monitoring again.",
-                            }}
-                            action={
-                                <Button onClick={() => setQaState("warning")}>
-                                    Try Again
-                                </Button>
-                            }
-                        />
-                    </div>
-                </Card>
-            </div>
-        );
+    for (const [key, value] of Object.entries(values)) {
+      const defaultValue = key === "time" ? "24h" : key === "environment" ? "production" : "all";
+      if (value === defaultValue) nextParams.delete(key);
+      else nextParams.set(key, value);
+    }
+    router.replace(nextParams.size ? `${pathname}?${nextParams}` : pathname);
+  };
+
+  const availableResources = resourceType === "pipeline" ? pipelineOptions : resourceType === "source" ? sourceOptions : [];
+  const resourceOptions = useMemo(() => {
+    const options = [...availableResources];
+    if (resource !== "all" && !options.some((item) => item.key === resource)) {
+      options.push({ key: resource, name: resource });
+    }
+    return [{ value: "all", label: "All Resources" }, ...options.map((item) => ({ value: item.key, label: item.name }))];
+  }, [availableResources, resource]);
+
+  const filters = (
+    <div className="flex flex-wrap items-end gap-2">
+      <FilterSelect
+        label="Monitoring window"
+        value={windowValue}
+        options={windowOptions}
+        onChange={(value) => {
+          const next = value as MonitoringWindow;
+          setWindowValue(next);
+          syncUrl({ window: next });
+        }}
+      />
+      <FilterSelect
+        label="Environment"
+        value={environment}
+        options={environmentOptions}
+        onChange={(value) => {
+          setEnvironment(value);
+          syncUrl({ environment: value });
+        }}
+      />
+      <FilterSelect
+        label="Resource type"
+        value={resourceType}
+        options={[
+          { value: "all", label: "All Resources" },
+          { value: "pipeline", label: "Pipelines" },
+          { value: "source", label: "Data Sources" },
+        ]}
+        onChange={(value) => {
+          const next = value as ResourceType;
+          setResourceType(next);
+          setResource("all");
+          syncUrl({ resourceType: next, resource: "all" });
+        }}
+      />
+      {resourceType !== "all" && (
+        <FilterSelect
+          label="Resource"
+          value={resource}
+          options={resourceOptions}
+          onChange={(value) => {
+            setResource(value);
+            syncUrl({ resource: value });
+          }}
+        />
+      )}
+      <Button onClick={request.retry}><RefreshCw className="h-3.5 w-3.5" /> Refresh</Button>
+    </div>
+  );
+
+  if (request.loading && !request.data) return <MonitoringSkeleton />;
+  if (request.error) {
     return (
-        <div className="animate-enter">
-            <PageHeader
-                title="Monitoring"
-                description="Monitor pipeline reliability, execution health, and connected systems."
-                action={
-                    <div className="flex flex-wrap items-center gap-2">
-                        {showQaSelector && (
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                                    QA State
-                                </span>
-                                <FilterSelect
-                                    label="QA State"
-                                    value={
-                                        qaState === "warning"
-                                            ? "default"
-                                            : qaState
-                                    }
-                                    onChange={selectQaState}
-                                    options={[
-                                        { label: "Default", value: "default" },
-                                        { label: "Healthy", value: "healthy" },
-                                        {
-                                            label: "Critical",
-                                            value: "critical",
-                                        },
-                                        {
-                                            label: "No active issues",
-                                            value: "no-issues",
-                                        },
-                                        {
-                                            label: "No monitoring data",
-                                            value: "empty",
-                                        },
-                                        { label: "Stale data", value: "stale" },
-                                        { label: "Page error", value: "error" },
-                                        {
-                                            label: "Partial section error",
-                                            value: "partial",
-                                        },
-                                    ]}
-                                />
-                            </div>
-                        )}
-                        <span className="text-[11px] text-zinc-400">
-                            Last updated {lastUpdated}
-                        </span>
-                        <Button onClick={() => setLastUpdated("just now")}>
-                            <RefreshCw className="h-3.5 w-3.5" /> Refresh
-                        </Button>
-                    </div>
-                }
-            />
-            <div className="mb-7 flex flex-col gap-2 sm:flex-row">
-                <FilterSelect
-                    label="Time range"
-                    value={timeRange}
-                    onChange={(value) => { setTimeRange(value as MonitoringTimeRange); syncFilter("time", value, "24h"); }}
-                    options={timeRangeOptions}
-                />
-                <FilterSelect
-                    label="Environment"
-                    value={environment}
-                    onChange={(value) => { setEnvironment(value as MonitoringEnvironment); syncFilter("environment", value, "All"); }}
-                    options={[
-                        { label: "All Environments", value: "All" },
-                        { label: "Production", value: "Production" },
-                        { label: "Staging", value: "Staging" },
-                        { label: "Development", value: "Development" },
-                    ]}
-                />
-                <FilterSelect
-                    label="Resource Type"
-                    value={resourceType}
-                    onChange={(value) => { setResourceType(value as MonitoringResourceType); setResourceId("All"); syncFilter("resourceType", value, "All"); syncFilter("resource", "All", "All"); }}
-                    options={[
-                        { label: "All Resources", value: "All" },
-                        { label: "Pipelines", value: "Pipelines" },
-                        { label: "Data Sources", value: "Data Sources" },
-                    ]}
-                />
-                {resourceType !== "All" && <FilterSelect
-                    label="Resource"
-                    value={resourceId}
-                    onChange={(value) => { setResourceId(value); syncFilter("resource", value, "All"); }}
-                    options={[{ label: `All ${resourceType.toLowerCase()}`, value: "All" }, ...resourceOptions]}
-                />}
-            </div>
-            {!hasData ? (
-                <EmptyState
-                    title={
-                        qaState === "empty" && !isFiltered
-                            ? "No monitoring data yet"
-                            : "No monitoring data matches these filters"
-                    }
-                    description={
-                        qaState === "empty" && !isFiltered
-                            ? "Operational metrics will appear after pipelines begin running and data sources are checked."
-                            : "Try adjusting the environment, resource type, or time range."
-                    }
-                    icon={<Activity className="h-4 w-4" />}
-                    tone="neutral"
-                    action={
-                        qaState === "empty" && !isFiltered ? (
-                            <Button onClick={() => router.push("/pipelines")}>
-                                View Pipelines
-                            </Button>
-                        ) : (
-                            <Button onClick={clearFilters}>
-                                Clear Filters
-                            </Button>
-                        )
-                    }
-                />
-            ) : (
-                <>
-                    {qaState === "stale" && (
-                        <div className="mb-7 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                            <div className="flex gap-3">
-                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                                <div>
-                                    <p className="text-sm font-semibold text-amber-900">
-                                        Monitoring data may be stale
-                                    </p>
-                                    <p className="mt-1 font-mono text-[10px] text-amber-700">
-                                        MONITORING_DATA_STALE
-                                    </p>
-                                    <p className="mt-2 text-xs text-amber-800">
-                                        The latest platform health evaluation
-                                        was completed 18 minutes ago.
-                                    </p>
-                                    <p className="mt-1 text-xs text-amber-800">
-                                        <span className="font-medium">
-                                            Last Updated:
-                                        </span>{" "}
-                                        10:24 AM
-                                    </p>
-                                    <p className="mt-2 text-xs text-amber-800">
-                                        <span className="font-medium">
-                                            Recommended Action:
-                                        </span>{" "}
-                                        Use current resource details before
-                                        taking operational action.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    <section>
-                        <Card
-                            title="Overall Health"
-                            description="Current platform-wide operational evaluation."
-                        >
-                            <div className="p-4">
-                                <OperationalStatus
-                                    result={healthResult}
-                                    statusLabel={healthStatus}
-                                    details={[
-                                        {
-                                            label: "Last Evaluation",
-                                            value:
-                                                qaState === "stale"
-                                                    ? "10:24 AM"
-                                                    : lastUpdated,
-                                        },
-                                        ...(healthStatus === "Warning"
-                                            ? [
-                                                  {
-                                                      label: "Supporting Context",
-                                                      value: "One pipeline is failing, one data source has elevated connection latency, and one pipeline has a validation failure.",
-                                                  },
-                                              ]
-                                            : []),
-                                    ]}
-                                />
-                            </div>
-                        </Card>
-                    </section>
-                    <section className="mt-7">
-                        <OperationalMetrics
-                            range={timeRange}
-                            resourceType={resourceType}
-                            critical={qaState === "critical"}
-                        />
-                    </section>
-                    <section className="mt-7">
-                        <div className="mb-3 flex items-center gap-2">
-                            <h2 className="text-[15px] font-semibold text-zinc-900">
-                                Active Issues
-                            </h2>
-                            {visibleIssues.length > 0 && (
-                                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
-                                    {visibleIssues.length}
-                                </span>
-                            )}
-                        </div>
-                        {sectionErrors.issues ? (
-                            <SectionError
-                                title="Active issues"
-                                code="MONITORING_ISSUES_UNAVAILABLE"
-                                onRetry={() => setSectionHealthy("issues")}
-                            />
-                        ) : (
-                            <ActiveIssues
-                                issues={visibleIssues}
-                                onAction={issueAction}
-                            />
-                        )}
-                    </section>
-                    {showPipelines && (
-                        <section className="mt-7">
-                            <Card
-                                title="Pipeline Health"
-                                description="Reliability and execution health by pipeline."
-                                action={
-                                    <Button
-                                        variant="ghost"
-                                        className="h-7 px-2"
-                                        onClick={() =>
-                                            router.push("/pipelines")
-                                        }
-                                    >
-                                        View All Pipelines
-                                    </Button>
-                                }
-                            >
-                                {sectionErrors.pipelines ? (
-                                    <div className="p-4">
-                                        <SectionError
-                                            title="Pipeline health"
-                                            code="PIPELINE_HEALTH_UNAVAILABLE"
-                                            onRetry={() =>
-                                                setSectionHealthy("pipelines")
-                                            }
-                                        />
-                                    </div>
-                                ) : (
-                                    <PipelineHealthTable
-                                        rows={filteredPipelines}
-                                        onOpen={(id) =>
-                                            router.push(`/pipelines/${id}`)
-                                        }
-                                    />
-                                )}
-                            </Card>
-                        </section>
-                    )}
-                    {showPipelines && (
-                        <section className="mt-7">
-                            <Card
-                                title="Execution Reliability"
-                                description="Successful and failed execution behavior across the selected range."
-                                action={
-                                    <Button
-                                        variant="ghost"
-                                        className="h-7 px-2"
-                                        onClick={() =>
-                                            router.push(
-                                                "/pipeline-runs?status=Failed",
-                                            )
-                                        }
-                                    >
-                                        View Failed Runs
-                                    </Button>
-                                }
-                            >
-                                {sectionErrors.reliability ? (
-                                    <div className="p-4">
-                                        <SectionError
-                                            title="Execution reliability"
-                                            code="EXECUTION_RELIABILITY_UNAVAILABLE"
-                                            onRetry={() =>
-                                                setSectionHealthy("reliability")
-                                            }
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="p-4">
-                                        <div className="mb-4 flex flex-wrap items-end gap-x-6 gap-y-2">
-                                            <div>
-                                                <p className="text-[11px] text-zinc-500">
-                                                    Success Rate
-                                                </p>
-                                                <p className="text-2xl font-semibold tracking-tight text-zinc-950">
-                                                    {
-                                                        metricsByRange[
-                                                            timeRange
-                                                        ].successRate
-                                                    }
-                                                </p>
-                                            </div>
-                                            <p className="text-xs text-zinc-500">
-                                                <span className="font-medium text-emerald-700">
-                                                    Successful:{" "}
-                                                    {
-                                                        metricsByRange[
-                                                            timeRange
-                                                        ].successful
-                                                    }
-                                                </span>{" "}
-                                                ·{" "}
-                                                <button
-                                                    className="font-medium text-rose-700 hover:underline"
-                                                    onClick={() =>
-                                                        router.push(
-                                                            "/pipeline-runs?status=Failed",
-                                                        )
-                                                    }
-                                                >
-                                                    Failed:{" "}
-                                                    {
-                                                        metricsByRange[
-                                                            timeRange
-                                                        ].failed
-                                                    }
-                                                </button>{" "}
-                                                · Cancelled: 1
-                                            </p>
-                                        </div>
-                                        <TrendChart
-                                            labels={trendsByRange[
-                                                timeRange
-                                            ].map((point) => point.label)}
-                                            series={[
-                                                {
-                                                    label: "Success rate",
-                                                    values: trendsByRange[
-                                                        timeRange
-                                                    ].map(
-                                                        (point) =>
-                                                            point.success,
-                                                    ),
-                                                    color: "#10b981",
-                                                },
-                                                {
-                                                    label: "Failure rate",
-                                                    values: trendsByRange[
-                                                        timeRange
-                                                    ].map(
-                                                        (point) => point.failed,
-                                                    ),
-                                                    color: "#f43f5e",
-                                                },
-                                            ]}
-                                            valueSuffix="%"
-                                        />
-                                    </div>
-                                )}
-                            </Card>
-                        </section>
-                    )}
-                    {showPipelines && (
-                        <section className="mt-7">
-                            <Card
-                                title="Pipeline Runtime"
-                                description="Average completed-execution duration over the selected range."
-                            >
-                                {sectionErrors.runtime ? (
-                                    <div className="p-4">
-                                        <SectionError
-                                            title="Pipeline runtime"
-                                            code="PIPELINE_RUNTIME_UNAVAILABLE"
-                                            onRetry={() =>
-                                                setSectionHealthy("runtime")
-                                            }
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="p-4">
-                                        <div className="mb-4 flex flex-wrap items-end gap-6">
-                                            <div>
-                                                <p className="text-[11px] text-zinc-500">
-                                                    Average Runtime
-                                                </p>
-                                                <p className="text-2xl font-semibold text-zinc-950">
-                                                    {qaState === "critical"
-                                                        ? "2m 54s"
-                                                        : metricsByRange[
-                                                              timeRange
-                                                          ].avgRuntime}
-                                                </p>
-                                            </div>
-                                            <div className="text-xs text-zinc-500">
-                                                <p>
-                                                    Previous Period:{" "}
-                                                    <span className="font-medium text-zinc-700">
-                                                        2m 05s
-                                                    </span>
-                                                </p>
-                                                <p
-                                                    className={
-                                                        qaState === "critical"
-                                                            ? "text-amber-700"
-                                                            : "text-zinc-600"
-                                                    }
-                                                >
-                                                    Difference:{" "}
-                                                    <span className="font-medium">
-                                                        {qaState === "critical"
-                                                            ? "+49s"
-                                                            : "+13s"}
-                                                    </span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                        {qaState === "critical" && (
-                                            <div className="mb-4">
-                                                <OperationalStatus
-                                                    statusLabel="Warning"
-                                                    result={{
-                                                        status: "Warning",
-                                                        platformCode:
-                                                            "PIPELINE_RUNTIME_DEGRADED",
-                                                        message:
-                                                            "Average execution duration has increased 38% compared with the previous period.",
-                                                        recommendedAction:
-                                                            "Review pipelines with the largest runtime increases.",
-                                                    }}
-                                                />
-                                            </div>
-                                        )}
-                                        <TrendChart
-                                            labels={trendsByRange[
-                                                timeRange
-                                            ].map((point) => point.label)}
-                                            series={[
-                                                {
-                                                    label: "Average runtime",
-                                                    values: trendsByRange[
-                                                        timeRange
-                                                    ].map(
-                                                        (point) =>
-                                                            point.runtime,
-                                                    ),
-                                                    color: "#6366f1",
-                                                },
-                                            ]}
-                                            valueSuffix="s"
-                                        />
-                                    </div>
-                                )}
-                            </Card>
-                        </section>
-                    )}
-                    {showPipelines && (
-                        <section className="mt-7">
-                            <Card
-                                title="Schedule Health"
-                                description="Expected executions and schedule-window adherence."
-                            >
-                                {sectionErrors.schedule ? (
-                                    <div className="p-4">
-                                        <SectionError
-                                            title="Schedule health"
-                                            code="SCHEDULE_HEALTH_UNAVAILABLE"
-                                            onRetry={() =>
-                                                setSectionHealthy("schedule")
-                                            }
-                                        />
-                                    </div>
-                                ) : (
-                                    <div>
-                                        <div className="grid grid-cols-3 border-b border-zinc-100">
-                                            <div className="p-4">
-                                                <p className="text-[11px] text-zinc-500">
-                                                    On Time
-                                                </p>
-                                                <p className="mt-1 text-lg font-semibold text-emerald-700">
-                                                    143
-                                                </p>
-                                            </div>
-                                            <div className="border-l border-zinc-100 p-4">
-                                                <p className="text-[11px] text-zinc-500">
-                                                    Late
-                                                </p>
-                                                <p className="mt-1 text-lg font-semibold text-amber-700">
-                                                    {qaState === "healthy" ||
-                                                    qaState === "no-issues"
-                                                        ? 0
-                                                        : 1}
-                                                </p>
-                                            </div>
-                                            <div className="border-l border-zinc-100 p-4">
-                                                <p className="text-[11px] text-zinc-500">
-                                                    Missed
-                                                </p>
-                                                <p className="mt-1 text-lg font-semibold text-rose-700">
-                                                    {qaState === "healthy" ||
-                                                    qaState === "no-issues"
-                                                        ? 0
-                                                        : 1}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        {qaState === "healthy" ||
-                                        qaState === "no-issues" ? (
-                                            <div className="p-4">
-                                                <EmptyState
-                                                    title="All scheduled pipelines are running on time."
-                                                    description="No late or missed executions were detected."
-                                                />
-                                            </div>
-                                        ) : (
-                                            <div className="divide-y divide-zinc-100">
-                                                {filteredSchedules.map(
-                                                    (item) => (
-                                                        <button
-                                                            key={item.id}
-                                                            onClick={() =>
-                                                                item.pipelineId
-                                                                    ? router.push(
-                                                                          `/pipelines/${item.pipelineId}`,
-                                                                      )
-                                                                    : placeholder(
-                                                                          "Pipeline detail is not available for this mock resource.",
-                                                                      )
-                                                            }
-                                                            className="grid w-full gap-2 p-4 text-left text-xs hover:bg-zinc-50 sm:grid-cols-[1fr_auto_auto_auto]"
-                                                        >
-                                                            <span>
-                                                                <span className="font-medium text-zinc-800">
-                                                                    {
-                                                                        item.pipeline
-                                                                    }
-                                                                </span>
-                                                                <span className="mt-1 block font-mono text-[10px] text-zinc-500">
-                                                                    {
-                                                                        item.platformCode
-                                                                    }
-                                                                </span>
-                                                            </span>
-                                                            <span
-                                                                className={
-                                                                    item.status ===
-                                                                    "Late"
-                                                                        ? "font-medium text-amber-700"
-                                                                        : "font-medium text-rose-700"
-                                                                }
-                                                            >
-                                                                {item.status}
-                                                            </span>
-                                                            <span className="text-zinc-500">
-                                                                Expected{" "}
-                                                                {item.expected}
-                                                            </span>
-                                                            <span className="text-zinc-500">
-                                                                Actual{" "}
-                                                                {item.actual}
-                                                                {item.delay
-                                                                    ? ` · Delay ${item.delay}`
-                                                                    : ""}
-                                                            </span>
-                                                        </button>
-                                                    ),
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </Card>
-                        </section>
-                    )}
-                    {showSources && (
-                        <section className="mt-7">
-                            <Card
-                                title="Data Source Health"
-                                description="Availability, latency, and latest connection checks."
-                                action={
-                                    <Button
-                                        variant="ghost"
-                                        className="h-7 px-2"
-                                        onClick={() =>
-                                            router.push("/data-sources")
-                                        }
-                                    >
-                                        View All Data Sources
-                                    </Button>
-                                }
-                            >
-                                {sectionErrors.sources ? (
-                                    <div className="p-4">
-                                        <SectionError
-                                            title="Data source health"
-                                            code="SOURCE_HEALTH_UNAVAILABLE"
-                                            onRetry={() =>
-                                                setSectionHealthy("sources")
-                                            }
-                                        />
-                                    </div>
-                                ) : (
-                                    <>
-                                        <SourceHealthTable
-                                            rows={
-                                                qaState === "critical"
-                                                    ? filteredSources.map(
-                                                          (source, index) =>
-                                                              index === 0
-                                                                  ? {
-                                                                        ...source,
-                                                                        status: "Failed" as const,
-                                                                        platformCode:
-                                                                            "SOURCE_CONNECTION_FAILED",
-                                                                        vendorCode:
-                                                                            "SQLSTATE 08001",
-                                                                    }
-                                                                  : source,
-                                                      )
-                                                    : filteredSources
-                                            }
-                                            onOpen={(id) =>
-                                                id
-                                                    ? router.push(
-                                                          `/data-sources/${id}`,
-                                                      )
-                                                    : placeholder(
-                                                          "Source detail is not available for this monitored resource.",
-                                                      )
-                                            }
-                                        />
-                                        {qaState === "critical" && (
-                                            <div className="border-t border-zinc-100 p-4">
-                                                <OperationalStatus
-                                                    statusLabel="Failed"
-                                                    result={{
-                                                        status: "Error",
-                                                        platformCode:
-                                                            "SOURCE_CONNECTION_FAILED",
-                                                        vendorCode:
-                                                            "SQLSTATE 08001",
-                                                        message:
-                                                            "The platform could not establish a connection to Production Warehouse.",
-                                                        recommendedAction:
-                                                            "Test the source connection and verify network availability.",
-                                                    }}
-                                                />
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </Card>
-                        </section>
-                    )}
-                    <section className="mt-7">
-                        <Card
-                            title="Recent Events"
-                            description="Latest operational events across monitored resources."
-                        >
-                            {sectionErrors.events ? (
-                                <div className="p-4">
-                                    <SectionError
-                                        title="Recent events"
-                                        code="MONITORING_EVENTS_UNAVAILABLE"
-                                        onRetry={() =>
-                                            setSectionHealthy("events")
-                                        }
-                                    />
-                                </div>
-                            ) : (
-                                <ol className="p-4">
-                                    {filteredEvents.map((event, index) => (
-                                        <li
-                                            key={event.id}
-                                            className="relative flex gap-3 pb-5 last:pb-0"
-                                        >
-                                            {index <
-                                                filteredEvents.length - 1 && (
-                                                <span className="absolute left-[5px] top-3 h-full w-px bg-zinc-200" />
-                                            )}
-                                            <span
-                                                className={`relative mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ring-4 ${event.tone === "success" ? "bg-emerald-500 ring-emerald-100" : event.tone === "error" ? "bg-rose-500 ring-rose-100" : "bg-amber-500 ring-amber-100"}`}
-                                            />
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex flex-col justify-between gap-1 sm:flex-row">
-                                                    <p className="text-xs text-zinc-700">
-                                                        <button
-                                                            onClick={() =>
-                                                                router.push(
-                                                                    event.resourceType ===
-                                                                        "Pipeline"
-                                                                        ? `/pipelines/${event.resourceId}`
-                                                                        : `/data-sources/${event.resourceId}`,
-                                                                )
-                                                            }
-                                                            className="font-semibold text-zinc-900 hover:text-indigo-700"
-                                                        >
-                                                            {event.resource}
-                                                        </button>{" "}
-                                                        {event.description}
-                                                    </p>
-                                                    <time className="text-[11px] text-zinc-400">
-                                                        {event.time}
-                                                    </time>
-                                                </div>
-                                                <div className="mt-1 flex flex-wrap items-center gap-3">
-                                                    <span className="font-mono text-[10px] text-zinc-500">
-                                                        {event.platformCode}
-                                                    </span>
-                                                    {event.runId && (
-                                                        <button
-                                                            className="text-[11px] font-medium text-indigo-600"
-                                                            onClick={() =>
-                                                                router.push(
-                                                                    `/pipeline-runs/${event.runId}`,
-                                                                )
-                                                            }
-                                                        >
-                                                            View Run
-                                                        </button>
-                                                    )}
-                                                    {event.logs && (
-                                                        <button
-                                                            className="text-[11px] font-medium text-indigo-600"
-                                                            onClick={() =>
-                                                                router.push(
-                                                                    `/logs?${new URLSearchParams({ scope: event.resourceType === "Data Source" ? "source" : event.runId ? "run" : "pipeline", [event.resourceType === "Data Source" ? "source" : "pipeline"]: event.resourceId, ...(event.runId ? { run: event.runId } : {}), code: event.platformCode, environment: event.environment, time: timeRange }).toString()}`,
-                                                                )
-                                                            }
-                                                        >
-                                                            View Logs
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ol>
-                            )}
-                        </Card>
-                    </section>
-                </>
-            )}
-            {isDevelopmentQaEnabled && <div className="sr-only">
-                {(
-                    [
-                        "issues",
-                        "pipelines",
-                        "reliability",
-                        "runtime",
-                        "schedule",
-                        "sources",
-                        "events",
-                    ] as SectionKey[]
-                ).map((key) => (
-                    <button
-                        key={key}
-                        onClick={() =>
-                            setSectionErrors((current) => ({
-                                ...current,
-                                [key]: true,
-                            }))
-                        }
-                    >
-                        Show {key} error
-                    </button>
-                ))}
-                {(
-                    [
-                        "healthy",
-                        "warning",
-                        "critical",
-                        "no-issues",
-                        "empty",
-                        "stale",
-                        "error",
-                        "partial",
-                    ] as MonitoringQaState[]
-                ).map((state) => (
-                    <button key={state} onClick={() => setQaState(state)}>
-                        Show {state} monitoring
-                    </button>
-                ))}
-            </div>}
-            {notice && (
-                <div
-                    role="status"
-                    className="fixed bottom-5 right-5 z-50 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-white shadow-panel"
-                >
-                    {notice}
-                </div>
-            )}
-        </div>
+      <div className="animate-enter">
+        <Breadcrumbs items={[{ label: "Operate" }, { label: "Monitoring" }]} />
+        <PageHeader title="Monitoring" description="Current operational state and active platform conditions." action={filters} />
+        <ErrorState
+          title={request.error.kind === "permission" ? "Permission denied" : request.error.kind === "unavailable" ? "Monitoring service unavailable" : "Monitoring couldn't be loaded"}
+          description={request.error.message}
+          actionLabel={request.error.retryable ? "Try Again" : undefined}
+          onRetry={request.error.retryable ? request.retry : undefined}
+          technicalDetails={[{ label: "Platform Code", value: request.error.code }]}
+        />
+      </div>
     );
+  }
+  if (!request.data) return null;
+
+  const data = request.data;
+  const noEvaluableState = data.state_availability === "NO_DATA" || data.overall_state == null;
+  const overallState = presentOverallState(data.state_availability, data.overall_state);
+  const stateResult = noEvaluableState
+    ? { status: "Neutral" as const, platformCode: "MONITORING_NO_DATA", message: overallState, recommendedAction: "Adjust the scope or allow operational observations to accumulate." }
+    : data.overall_state === "CRITICAL"
+      ? { status: "Error" as const, platformCode: "PLATFORM_OPERATIONAL_CRITICAL", message: "Critical operational conditions require attention.", recommendedAction: "Review the active issues and affected resources below." }
+      : data.overall_state === "WARNING"
+        ? { status: "Warning" as const, platformCode: "PLATFORM_OPERATIONAL_WARNING", message: "Operational warnings require review.", recommendedAction: "Review warning issues and affected resources below." }
+        : { status: "Success" as const, platformCode: "PLATFORM_OPERATIONAL_HEALTHY", message: "Current evaluable resources are healthy.", recommendedAction: "Continue monitoring current activity." };
+
+  return (
+    <div className="animate-enter">
+      <Breadcrumbs items={[{ label: "Operate" }, { label: "Monitoring" }]} />
+      <PageHeader
+        title="Monitoring"
+        description="Current operational state and active platform conditions."
+        eyebrow={<>Generated <span className="font-mono">{data.generated_at}</span></>}
+        action={filters}
+      />
+
+      <Card title="Overall Operational State" description="Authoritative state returned by the Monitoring aggregation.">
+        <div className="p-4">
+          <OperationalStatus
+            result={stateResult}
+            statusLabel={noEvaluableState ? "Disabled" : data.overall_state === "CRITICAL" ? "Critical" : data.overall_state === "WARNING" ? "Warning" : "Healthy"}
+            details={[
+              { label: "State availability", value: data.state_availability },
+              { label: "Overall state", value: overallState },
+              { label: "Selected period", value: `${data.period.start} — ${data.period.end}` },
+            ]}
+          />
+        </div>
+      </Card>
+
+      <section className="mt-7">
+        <h2 className="mb-3 text-[15px] font-semibold text-zinc-900">Current Metrics</h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+          {metricDefinitions.map((definition) => {
+            const metric = data.metrics[definition.key];
+            const presented = presentMetric(metric);
+            return <MetricCard key={definition.key} label={definition.label} value={presented.value} detail={presented.detail} icon={definition.icon} tone={metricTone(metric)} />;
+          })}
+        </div>
+      </section>
+
+      <section className="mt-7">
+        <Card title="Active Issues" description="Backend-deduplicated current conditions; no frontend issue reconstruction.">
+          {data.active_issues.items.length ? (
+            <div>
+              {data.active_issues.items.map((issue) => {
+                const href = activeIssueHref(issue);
+                return (
+                  <div key={issue.issue_key} className="border-b border-zinc-100 p-4 last:border-0">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2"><StatusBadge status={issue.severity === "CRITICAL" ? "Critical" : "Warning"} /><span className="font-mono text-[10px] text-zinc-500">{issue.issue_key}</span></div>
+                        <p className="mt-2 text-sm font-semibold text-zinc-900">{issue.title}</p>
+                        <p className="mt-1 text-xs text-zinc-600">{issue.message}</p>
+                        <p className="mt-2 font-mono text-[10px] text-zinc-500">{issue.platform_code ?? "Not available"}{issue.vendor_code ? ` · Vendor: ${issue.vendor_code}` : ""}{issue.rule_code ? ` · Rule: ${issue.rule_code}` : ""}</p>
+                      </div>
+                      {href && <Link href={href} className="text-xs font-medium text-indigo-700 hover:text-indigo-900">View details</Link>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : <div className="p-4"><EmptyState title="No active issues" description="The aggregation returned no active operational issues for this scope." /></div>}
+        </Card>
+      </section>
+
+      <div className="mt-7 grid gap-7 xl:grid-cols-2">
+        <Card title="Pipeline Health" description="Current backend pipeline status with period metrics.">
+          {data.pipeline_health.items.length ? data.pipeline_health.items.map((pipeline) => {
+            const success = presentMetric(pipeline.period_success_rate);
+            return <Row key={pipeline.pipeline_key}>
+              <Cell label="Pipeline"><Link className="font-medium text-zinc-900 hover:text-indigo-700" href={`/pipelines/${pipeline.pipeline_key}`}>{pipeline.name}</Link></Cell>
+              <Cell label="Status"><StatusBadge status={pipeline.operational_status === "FAILED" ? "Failed" : pipeline.operational_status[0] + pipeline.operational_status.slice(1).toLowerCase()} /></Cell>
+              <Cell label="Success rate">{success.value}</Cell>
+              <Cell label="Latest run">{pipeline.latest_run ? <Link className="font-mono text-indigo-700" href={`/pipeline-runs/${pipeline.latest_run.corvetra_run_id}`}>{pipeline.latest_run.corvetra_run_id}</Link> : "Not available"}</Cell>
+            </Row>;
+          }) : <div className="p-4"><EmptyState title="No pipeline health data" description="No pipelines match the selected scope." tone="neutral" /></div>}
+        </Card>
+
+        <Card title="Source Health" description="Authoritative current connectivity; Disabled remains a distinct state.">
+          {data.source_health.items.length ? data.source_health.items.map((source) => <Row key={source.source_key}>
+            <Cell label="Source"><Link className="font-medium text-zinc-900 hover:text-indigo-700" href={`/data-sources/${source.source_key}`}>{source.name}</Link></Cell>
+            <Cell label="Status"><StatusBadge status={source.operational_status[0] + source.operational_status.slice(1).toLowerCase()} /></Cell>
+            <Cell label="Type">{source.source_type}</Cell>
+            <Cell label="Last observed">{source.last_observed_at ?? "Not available"}</Cell>
+          </Row>) : <div className="p-4"><EmptyState title="No source health data" description="No sources match the selected scope." tone="neutral" /></div>}
+        </Card>
+      </div>
+
+      <div className="mt-7 grid gap-7 xl:grid-cols-2">
+        <Card title="Recent Failed Runs" description="Failed executions returned by the aggregation for this period.">
+          {data.recent_failed_runs.items.length ? data.recent_failed_runs.items.map((run) => <Row key={run.corvetra_run_id}>
+            <Cell label="Run"><Link className="font-mono text-indigo-700" href={`/pipeline-runs/${run.corvetra_run_id}`}>{run.corvetra_run_id}</Link></Cell>
+            <Cell label="Pipeline"><Link href={`/pipelines/${run.pipeline.pipeline_key}`}>{run.pipeline.name}</Link></Cell>
+            <Cell label="Stage">{run.stage ?? "Not available"}</Cell>
+            <Cell label="Started">{run.started_at}</Cell>
+          </Row>) : <div className="p-4"><EmptyState title="No failed runs in this period" description="Current issues may still be present outside the selected run-history window." /></div>}
+        </Card>
+
+        <Card title="Validation Conditions" description="Latest failed validation conditions and any representing alert.">
+          {data.validation_conditions.items.length ? data.validation_conditions.items.map((validation) => <Row key={`${validation.check_key}:${validation.run.corvetra_run_id}`}>
+            <Cell label="Check"><Link className="font-medium text-indigo-700" href={`/validation/${validation.check_key}?run=${encodeURIComponent(validation.run.corvetra_run_id)}`}>{validation.name}</Link></Cell>
+            <Cell label="Result"><StatusBadge status={validation.result === "FAILED" ? "Failed" : validation.result} /></Cell>
+            <Cell label="Run"><Link className="font-mono" href={`/pipeline-runs/${validation.run.corvetra_run_id}`}>{validation.run.corvetra_run_id}</Link></Cell>
+            <Cell label="Alert">{validation.represented_by_alert_key ? <Link href={`/alerts/${validation.represented_by_alert_key}`}>{validation.represented_by_alert_key}</Link> : "Not represented"}</Cell>
+          </Row>) : <div className="p-4"><EmptyState title="No validation conditions" description="No failed validation conditions match this scope." /></div>}
+        </Card>
+      </div>
+
+      <section className="mt-7">
+        <Card title="Recent Activity" description="Persisted run and technical-event activity, using exact API timestamps.">
+          {data.recent_activity.items.length ? data.recent_activity.items.map((activity) => {
+            const href = activityHref(activity);
+            return <Row key={`${activity.kind}:${activity.event_key ?? activity.run?.corvetra_run_id}:${activity.occurred_at}`}>
+              <Cell label="Time"><span className="font-mono">{activity.occurred_at}</span></Cell>
+              <Cell label="Resource">{activity.pipeline?.name ?? activity.source?.name ?? "Platform"}</Cell>
+              <Cell label="Message">{activity.message}</Cell>
+              <Cell label="Evidence">{href ? <Link className="text-indigo-700" href={href}>{activity.kind === "TECHNICAL_EVENT" ? "View logs" : "View run"}</Link> : "Not available"}</Cell>
+            </Row>;
+          }) : <div className="p-4"><EmptyState title="No recent activity" description="No persisted activity falls inside the selected period." tone="neutral" /></div>}
+        </Card>
+      </section>
+
+      <Card className="mt-7" title="Snapshot Context" description="Aggregation scope and exact server-provided timestamps.">
+        <div className="p-4">
+          <TechnicalDetails items={[
+            { label: "Generated at", value: data.generated_at },
+            { label: "Period start", value: data.period.start },
+            { label: "Period end", value: data.period.end },
+            { label: "Environment", value: data.scope.environment ?? "All" },
+            { label: "Pipeline", value: data.scope.pipeline ?? "All" },
+            { label: "Source", value: data.scope.source ?? "All" },
+          ]} />
+        </div>
+      </Card>
+    </div>
+  );
 }
 
 export function MonitoringSkeleton() {
-    return (
-        <div className="space-y-7">
-            <div className="flex items-end justify-between">
-                <div>
-                    <Skeleton className="h-7 w-40" />
-                    <Skeleton className="mt-2 h-4 w-96" />
-                </div>
-                <Skeleton className="h-9 w-48" />
-            </div>
-            <div className="flex gap-2">
-                <Skeleton className="h-9 w-32" />
-                <Skeleton className="h-9 w-36" />
-                <Skeleton className="h-9 w-32" />
-            </div>
-            <Skeleton className="h-64" />
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="h-28" />
-                ))}
-            </div>
-            <Skeleton className="h-80" />
-            <Skeleton className="h-72" />
-            <Skeleton className="h-80" />
-            <Skeleton className="h-80" />
-            <Skeleton className="h-72" />
-            <Skeleton className="h-72" />
-            <Skeleton className="h-80" />
-        </div>
-    );
+  return <div className="space-y-7"><Skeleton className="h-20" /><Skeleton className="h-52" /><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div><Skeleton className="h-72" /></div>;
 }

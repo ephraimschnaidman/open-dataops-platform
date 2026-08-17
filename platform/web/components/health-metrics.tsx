@@ -1,123 +1,348 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Activity, AlertTriangle, Clock3, Database, FileCheck2, FlaskConical, Gauge, HeartPulse, PanelRightClose, RefreshCw, TimerReset, X } from "lucide-react";
-import { TrendChart } from "@/components/trend-chart";
-import { Breadcrumbs, Button, Card, EmptyState, ErrorState, FilterSelect, OperationalStatus, PageHeader, Skeleton, StatusBadge } from "@/components/ui";
 import {
-    coreMetrics, freshnessRows, healthResources, reliabilityRows, reviewRows, runtimeRows, scheduleRows, sourceRows, timeRangeOptions, trendLabels, trends, validationRows,
-    type HealthEnvironment, type HealthMetric, type HealthQaState, type HealthResourceType, type HealthStatus, type HealthTimeRange,
-} from "@/lib/health-metrics-data";
-import { getDevelopmentQaParam } from "@/lib/development-qa";
-import { isEnvironment, useEnvironmentContext } from "@/lib/environment-context";
+  Activity,
+  Clock3,
+  Database,
+  FileCheck2,
+  Gauge,
+  HeartPulse,
+  RefreshCw,
+  TimerReset,
+} from "lucide-react";
 
-const qaGroups: Array<{ label: string; options: Array<{ label: string; value: HealthQaState }> }> = [
-    { label: "Platform States", options: [{ label: "Healthy platform", value: "healthy" }, { label: "Warning / degraded", value: "warning" }, { label: "Critical platform", value: "critical" }] },
-    { label: "Time / Scope", options: [{ label: "24-hour view", value: "24-hour" }, { label: "7-day view", value: "7-day" }, { label: "30-day view", value: "30-day" }, { label: "Pipeline scoped", value: "pipeline-scoped" }, { label: "Data source scoped", value: "source-scoped" }] },
-    { label: "Metric Degradation", options: [{ label: "Reliability degradation", value: "reliability" }, { label: "Runtime degradation", value: "runtime" }, { label: "Schedule degradation", value: "schedule" }, { label: "Freshness degradation", value: "freshness" }, { label: "Source reliability degradation", value: "source-reliability" }, { label: "Validation quality degradation", value: "validation-quality" }] },
-    { label: "Data / System States", options: [{ label: "No history", value: "no-history" }, { label: "Insufficient comparison", value: "insufficient-history" }, { label: "Filtered empty", value: "filtered-empty" }, { label: "Stale metrics", value: "stale" }, { label: "Historical data gap", value: "data-gap" }, { label: "Loading", value: "loading" }, { label: "Page error", value: "error" }, { label: "Partial section error", value: "partial" }] },
+import { TrendChart } from "@/components/trend-chart";
+import type { AggregationMetric, HealthMetricsResponse } from "@/lib/api-contract";
+import {
+  HEALTH_WINDOWS,
+  metricTone,
+  presentMetric,
+  reviewResourceHref,
+  sparseTrend,
+  type HealthWindow,
+} from "@/lib/aggregation-adapters";
+import { useApiQuery } from "@/lib/use-api-query";
+import {
+  Breadcrumbs,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  FilterSelect,
+  MetricCard,
+  PageHeader,
+  Skeleton,
+  StatusBadge,
+  TechnicalDetails,
+} from "@/components/ui";
+
+type ResourceType = "all" | "pipeline" | "source";
+type ResourceOption = { key: string; name: string };
+
+const windowOptions = HEALTH_WINDOWS.map((value) => ({
+  value,
+  label: `Last ${value.replace("d", " days").replace("h", " hours")}`,
+}));
+const environmentOptions = [
+  { value: "all", label: "All Environments" },
+  { value: "production", label: "Production" },
+  { value: "staging", label: "Staging" },
+  { value: "development", label: "Development" },
 ];
+const metricDefinitions = [
+  { key: "pipeline_success_rate", label: "Pipeline Success Rate", icon: Gauge },
+  { key: "average_runtime", label: "Average Runtime", icon: Clock3 },
+  { key: "validation_pass_rate", label: "Validation Pass Rate", icon: FileCheck2 },
+  { key: "source_availability", label: "Source Availability", icon: Database },
+  { key: "freshness_compliance", label: "Freshness Compliance", icon: Activity },
+  { key: "schedule_adherence", label: "Schedule Adherence", icon: TimerReset },
+] as const;
 
-const statusTone: Record<HealthStatus, "positive" | "warning" | "danger"> = { Healthy: "positive", Warning: "warning", Critical: "danger" };
-const icons = { reliability: Gauge, schedule: TimerReset, sources: Database, validation: FileCheck2, freshness: Activity, runtime: Clock3 };
-
-function PeriodComparison({ change, favorable, unavailable = false }: { change: string; favorable: boolean; unavailable?: boolean }) {
-    if (unavailable) return <span className="text-[11px] text-zinc-400">Comparison unavailable</span>;
-    return <span className={`text-[11px] font-medium ${favorable ? "text-emerald-700" : "text-amber-700"}`}>{change} vs previous period</span>;
+function Row({ children }: { children: React.ReactNode }) {
+  return <div className="grid gap-2 border-b border-zinc-100 px-4 py-3 last:border-0 md:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))]">{children}</div>;
 }
 
-function ThresholdIndicator({ metric }: { metric: HealthMetric }) {
-    return <details className="mt-3 text-[10px] text-zinc-500"><summary className="cursor-pointer font-medium text-zinc-500 hover:text-zinc-800">View thresholds</summary><dl className="mt-2 grid gap-1 rounded-md bg-zinc-50 p-2"><div className="flex justify-between gap-3"><dt>Healthy</dt><dd className="font-medium text-emerald-700">{metric.threshold}</dd></div><div className="flex justify-between gap-3"><dt>Warning</dt><dd className="font-medium text-amber-700">{metric.warning}</dd></div><div className="flex justify-between gap-3"><dt>Critical</dt><dd className="font-medium text-rose-700">{metric.critical}</dd></div></dl></details>;
+function Cell({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="min-w-0"><p className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400 md:hidden">{label}</p><div className="mt-0.5 truncate text-xs text-zinc-700 md:mt-0">{children}</div></div>;
 }
 
-function HealthMetricCard({ metric, healthy, critical, unavailable }: { metric: HealthMetric; healthy: boolean; critical: boolean; unavailable: boolean }) {
-    const Icon = icons[metric.key as keyof typeof icons];
-    const status = healthy ? "Healthy" : critical && (metric.key === "reliability" || metric.key === "validation") ? "Critical" : metric.status;
-    return <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-card"><div className="flex items-start justify-between gap-2"><div><p className="text-xs font-medium text-zinc-500">{metric.label}</p><p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-zinc-950">{metric.value}</p></div><span className={`grid h-7 w-7 place-items-center rounded-md ${statusTone[status] === "positive" ? "bg-emerald-50 text-emerald-600" : statusTone[status] === "warning" ? "bg-amber-50 text-amber-600" : "bg-rose-50 text-rose-600"}`}><Icon className="h-3.5 w-3.5" /></span></div><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><PeriodComparison change={healthy ? "+0.4%" : metric.delta} favorable={healthy || metric.favorable} unavailable={unavailable} /><StatusBadge status={status} /></div><p className="mt-2 text-[10px] text-zinc-400">Previous: {unavailable ? "Unavailable" : metric.previous}</p><ThresholdIndicator metric={metric} /></div>;
-}
-
-function SummaryStats({ items }: { items: Array<{ label: string; value: string }> }) {
-    return <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-zinc-100 bg-zinc-100 sm:grid-cols-4">{items.map((item) => <div key={item.label} className="bg-zinc-50/70 p-3"><dt className="text-[10px] text-zinc-500">{item.label}</dt><dd className="mt-1 text-sm font-semibold tabular-nums text-zinc-800">{item.value}</dd></div>)}</dl>;
-}
-
-function MetricTrendPanel({ title, current, previous, comparison, favorable, range, series, suffix, threshold, gap = false, children }: { title: string; current: string; previous: string; comparison: string; favorable: boolean; range: HealthTimeRange; series: number[]; suffix?: string; threshold?: { value: number; label: string }; gap?: boolean; children?: React.ReactNode }) {
-    const values = gap ? series.map((value, index) => index === 3 ? null : value) : series;
-    return <div className="p-4"><div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><p className="text-[11px] font-medium text-zinc-500">{title}</p><p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-zinc-950">{current}</p><p className="mt-1 text-[10px] text-zinc-400">Previous period: {previous}</p></div><PeriodComparison change={comparison} favorable={favorable} unavailable={previous === "Unavailable"} /></div>{children}<div className={children ? "mt-4" : ""}><TrendChart labels={trendLabels[range]} series={[{ label: title, values, color: "#4f46e5" }]} valueSuffix={suffix} threshold={threshold} /></div></div>;
-}
-
-function Degradation({ code, message, action, buttons }: { code: string; message: string; action: string; buttons?: React.ReactNode }) {
-    return <div className="mb-4 rounded-md border border-amber-100 bg-amber-50/60 p-3"><div className="flex flex-wrap items-center gap-2"><StatusBadge status="Warning" /><code className="text-[10px] font-medium text-amber-800">{code}</code></div><p className="mt-2 text-xs font-medium text-zinc-800">{message}</p><p className="mt-1 text-xs text-zinc-600"><span className="font-medium">Recommended Action:</span> {action}</p>{buttons && <div className="mt-3 flex flex-wrap gap-2">{buttons}</div>}</div>;
-}
-
-function LoadingPage() {
-    return <div><div className="mb-7 grid gap-3 md:grid-cols-3"><Skeleton className="h-9" /><Skeleton className="h-9" /><Skeleton className="h-9" /></div><Skeleton className="h-44 w-full" /><div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">{Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-44" />)}</div>{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="mt-7 h-80 w-full" />)}</div>;
-}
-
-function DataTable({ headers, rows }: { headers: Array<{ label: string; hide?: string }>; rows: React.ReactNode[][] }) {
-    return <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left"><thead><tr className="border-b border-zinc-100 bg-zinc-50/60 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{headers.map((header) => <th key={header.label} className={`px-4 py-2.5 ${header.hide ?? ""}`}>{header.label}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex} className="border-b border-zinc-100 text-xs last:border-0 hover:bg-zinc-50">{row.map((cell, cellIndex) => <td key={cellIndex} className={`px-4 py-3 ${headers[cellIndex].hide ?? ""}`}>{cell}</td>)}</tr>)}</tbody></table></div>;
-}
-
-function HealthMetricsQaPanel({ active, open, onOpenChange, onSelect }: { active: HealthQaState; open: boolean; onOpenChange: (open: boolean) => void; onSelect: (value: HealthQaState) => void }) {
-    const returnFocus = useRef<HTMLElement | null>(null);
-    useEffect(() => { if (!open) return; returnFocus.current = document.activeElement as HTMLElement; const frame = requestAnimationFrame(() => document.querySelector<HTMLElement>('[aria-label="Close QA panel"]')?.focus()); const key = (event: KeyboardEvent) => { if (event.key === "Escape") onOpenChange(false); }; document.addEventListener("keydown", key); return () => { cancelAnimationFrame(frame); document.removeEventListener("keydown", key); returnFocus.current?.focus(); }; }, [open, onOpenChange]);
-    return <><button type="button" onClick={() => onOpenChange(true)} aria-label="Open Health Metrics QA states" className={`fixed right-0 top-24 z-30 flex items-center gap-2 rounded-l-md border border-r-0 border-indigo-200 bg-indigo-50 px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wider text-indigo-700 shadow-card transition ${open ? "pointer-events-none translate-x-full opacity-0" : ""}`}><FlaskConical className="h-3.5 w-3.5" /> QA</button><button type="button" aria-label="Close Health Metrics QA states" onClick={() => onOpenChange(false)} className={`fixed inset-0 z-30 bg-zinc-950/20 transition ${open ? "opacity-100" : "pointer-events-none opacity-0"}`} /><aside aria-label="Health Metrics QA states" className={`fixed inset-y-0 right-0 z-40 flex w-full max-w-sm flex-col border-l border-zinc-200 bg-white shadow-panel transition-transform duration-200 ${open ? "translate-x-0" : "translate-x-full"}`}><div className="flex h-14 items-center justify-between border-b border-zinc-200 px-4"><div><p className="text-sm font-semibold text-zinc-900">Health Metrics QA</p><p className="text-[10px] text-zinc-500">Development-only deterministic states</p></div><button type="button" onClick={() => onOpenChange(false)} aria-label="Close QA panel" className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"><PanelRightClose className="h-4 w-4" /></button></div><div className="flex-1 space-y-5 overflow-y-auto p-4">{qaGroups.map((group) => <section key={group.label}><h2 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{group.label}</h2><div className="grid grid-cols-2 gap-1.5">{group.options.map((option) => { const selected = option.value === active; return <button type="button" key={option.value} aria-pressed={selected} onClick={() => onSelect(option.value)} className={`rounded-md border px-2.5 py-2 text-left text-xs font-medium transition ${selected ? "border-indigo-300 bg-indigo-50 text-indigo-800 ring-1 ring-indigo-200" : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>{option.label}</button>; })}</div></section>)}</div></aside></>;
+function MetricTrend({ title, metric, color }: { title: string; metric: AggregationMetric; color: string }) {
+  const presented = presentMetric(metric);
+  const trend = sparseTrend(metric);
+  return (
+    <Card title={title} description={`Current: ${presented.value} · Previous: ${presented.previous} · Delta: ${presented.delta}`}>
+      <div className="p-4">
+        {metric.availability !== "AVAILABLE" ? (
+          <EmptyState title={presented.value} description={presented.detail} icon={<HeartPulse className="h-4 w-4" />} tone="neutral" />
+        ) : trend.points.length ? (
+          <>
+            <TrendChart labels={trend.labels} series={[{ label: title, values: trend.values, color }]} valueSuffix={metric.unit === "PERCENT" ? "%" : metric.unit === "SECONDS" ? "s" : ""} />
+            <p className="mt-3 text-[10px] text-zinc-500">{trend.points.length} persisted bucket{trend.points.length === 1 ? "" : "s"}; empty buckets are intentionally omitted.</p>
+          </>
+        ) : (
+          <EmptyState title="No persisted trend points" description="The metric value is available, but the backend returned no populated trend buckets." icon={<HeartPulse className="h-4 w-4" />} tone="neutral" />
+        )}
+      </div>
+    </Card>
+  );
 }
 
 export function HealthMetricsPage() {
-    const router = useRouter(); const pathname = usePathname(); const params = useSearchParams();
-    const { currentEnvironment } = useEnvironmentContext();
-    const initialQa = (getDevelopmentQaParam(params) ?? "warning") as HealthQaState;
-    const [qa, setQa] = useState<HealthQaState>(initialQa);
-    const qaRange: HealthTimeRange | null = qa === "24-hour" ? "24h" : qa === "7-day" ? "7d" : qa === "30-day" ? "30d" : null;
-    const [range, setRange] = useState<HealthTimeRange>(qaRange ?? (params.get("time") as HealthTimeRange) ?? "7d");
-    const [environment, setEnvironment] = useState<HealthEnvironment>((params.get("environment") as HealthEnvironment) ?? currentEnvironment);
-    const [resourceType, setResourceType] = useState<HealthResourceType>((params.get("resourceType") as HealthResourceType) ?? (qa === "pipeline-scoped" ? "Pipelines" : qa === "source-scoped" ? "Data Sources" : "All"));
-    const [resource, setResource] = useState(params.get("resource") ?? (qa === "pipeline-scoped" ? "customer-ingestion" : qa === "source-scoped" ? "analytics-warehouse" : "All"));
-    const [lastUpdated, setLastUpdated] = useState("10:43 AM");
-    const [qaPanelOpen, setQaPanelOpen] = useState(false);
-    useEffect(() => { if (!isEnvironment(params.get("environment"))) setEnvironment(currentEnvironment); }, [currentEnvironment, params]);
-    const selectedResource = healthResources.find((item) => item.id === resource);
-    const dataGapMessage = selectedResource ? `Historical health metrics for ${selectedResource.name} are incomplete for 3 hours within the selected period.` : resourceType === "Pipelines" ? "Pipeline health metrics are incomplete for 3 hours within the selected period." : resourceType === "Data Sources" ? "Source connectivity metrics are incomplete for 3 hours within the selected period." : "Historical metric coverage is incomplete for 3 hours within the selected period.";
-    const healthy = qa === "healthy"; const critical = qa === "critical"; const comparisonUnavailable = qa === "insufficient-history"; const gap = qa === "data-gap";
-    const sync = (updates: Record<string, string | null>) => { const next = new URLSearchParams(params.toString()); Object.entries(updates).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key)); router.replace(`${pathname}${next.size ? `?${next.toString()}` : ""}`, { scroll: false }); };
-    const changeRange = (value: string) => { setRange(value as HealthTimeRange); sync({ time: value === "7d" ? null : value }); };
-    const clearResource = () => { setResource("All"); sync({ resource: null }); };
-    const clearFilters = () => { setEnvironment("All"); setResourceType("All"); setResource("All"); setRange("7d"); sync({ environment: null, resourceType: null, resource: null, time: null }); };
-    const selectQa = (value: string) => { const next = value as HealthQaState; setQa(next); const presets: Partial<Record<HealthQaState, { range?: HealthTimeRange; type?: HealthResourceType; resource?: string }>> = { "24-hour": { range: "24h" }, "7-day": { range: "7d" }, "30-day": { range: "30d" }, "pipeline-scoped": { type: "Pipelines", resource: "customer-ingestion" }, "source-scoped": { type: "Data Sources", resource: "analytics-warehouse" } }; const preset = presets[next]; if (preset?.range) setRange(preset.range); if (preset?.type) setResourceType(preset.type); if (preset?.resource) setResource(preset.resource); sync({ qa: next === "warning" ? null : next, time: preset?.range && preset.range !== "7d" ? preset.range : null, resourceType: preset?.type ?? null, resource: preset?.resource ?? null }); };
-    const availableResources = healthResources.filter((item) => (resourceType === "All" || item.type === resourceType) && (environment === "All" || item.environment === environment));
-    const pipelineHref = (id: string) => `/pipelines/${id}`; const sourceHref = (id: string) => `/data-sources/${id}`;
-    const compatibleValidationRange = range === "90d" ? "30d" : range;
-    const compatibleRunRange = range === "24h" ? "day" : range === "7d" ? "week" : "month";
-    const contextParams = new URLSearchParams({ time: compatibleValidationRange, ...(environment !== "All" ? { environment } : {}), ...(resourceType === "Pipelines" && resource !== "All" ? { pipeline: resource } : {}), ...(resourceType === "Data Sources" && resource !== "All" ? { source: resource } : {}) });
-    const failedRunsHref = `/pipeline-runs?${new URLSearchParams({ status: "Failed", time: compatibleRunRange, ...(resourceType === "Pipelines" && resource !== "All" ? { pipeline: resource } : {}) }).toString()}`;
-    const platformStatus: HealthStatus = critical ? "Critical" : healthy ? "Healthy" : "Warning";
-    const platformResult = healthy
-        ? { status: "Success" as const, platformCode: "PLATFORM_HEALTH_STABLE", message: "Reliability, runtime, freshness, source connectivity, and validation metrics remain within expected operating ranges.", recommendedAction: "Continue monitoring historical health trends." }
-        : critical ? { status: "Error" as const, platformCode: "PLATFORM_HEALTH_CRITICAL", message: "Multiple operational-health metrics are outside acceptable thresholds.", recommendedAction: "Review the most degraded resources and active operational issues." }
-            : { status: "Warning" as const, platformCode: "PLATFORM_HEALTH_DEGRADED", message: "Pipeline reliability and validation quality declined during the selected period.", recommendedAction: "Review the degraded metrics and affected resources below." };
-    const headerActions = <div className="flex flex-wrap items-end gap-2"><label className="flex flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400">Time Range</span><FilterSelect label="Time Range" value={range} onChange={changeRange} options={timeRangeOptions} /></label><Button onClick={() => setLastUpdated("just now")}><RefreshCw className="h-3.5 w-3.5" /> Refresh</Button><span className="pb-2 text-[10px] text-zinc-400">Last updated {lastUpdated}</span></div>;
-    const qaPanel = process.env.NODE_ENV === "development" ? <HealthMetricsQaPanel active={qa} open={qaPanelOpen} onOpenChange={setQaPanelOpen} onSelect={selectQa} /> : null;
-    if (qa === "error") return <div className="animate-enter"><Breadcrumbs items={[{ label: "Platform" }, { label: "Health Metrics" }]} /><PageHeader title="Health Metrics" description="Track platform reliability, performance, freshness, and data quality over time." action={headerActions} /><Card><div className="p-4"><OperationalStatus statusLabel="Failed" result={{ status: "Error", platformCode: "HEALTH_METRICS_UNAVAILABLE", vendorCode: "503", message: "The platform could not retrieve historical health metrics.", recommendedAction: "Try loading Health Metrics again." }} action={<Button onClick={() => selectQa("warning")}>Try Again</Button>} /></div></Card>{qaPanel}</div>;
-    return <div className="animate-enter"><Breadcrumbs items={[{ label: "Platform" }, { label: "Health Metrics" }]} /><PageHeader title="Health Metrics" description="Track platform reliability, performance, freshness, and data quality over time." action={headerActions} />
-        <div className="mb-7 flex flex-wrap items-end gap-2"><label className="flex flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400">Environment</span><FilterSelect label="Environment" value={environment} onChange={(value) => { setEnvironment(value as HealthEnvironment); sync({ environment: value === "All" ? null : value }); }} options={[{ label: "All Environments", value: "All" }, { label: "Production", value: "Production" }, { label: "Staging", value: "Staging" }, { label: "Development", value: "Development" }]} /></label><label className="flex flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400">Resource Type</span><FilterSelect label="Resource Type" value={resourceType} onChange={(value) => { setResourceType(value as HealthResourceType); setResource("All"); sync({ resourceType: value === "All" ? null : value, resource: null }); }} options={[{ label: "All Resource Types", value: "All" }, { label: "Pipelines", value: "Pipelines" }, { label: "Data Sources", value: "Data Sources" }]} /></label><label className="flex flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400">Resource</span><FilterSelect label="Resource" value={availableResources.some((item) => item.id === resource) ? resource : "All"} onChange={(value) => { setResource(value); sync({ resource: value === "All" ? null : value }); }} options={[{ label: "All Resources", value: "All" }, ...availableResources.map((item) => ({ label: item.name, value: item.id }))]} /></label>{(environment !== "All" || resourceType !== "All" || resource !== "All" || range !== "7d") && <Button variant="ghost" onClick={clearFilters}>Clear Filters</Button>}</div>
-        {selectedResource && <div className="mb-7 flex flex-col justify-between gap-3 rounded-lg border border-indigo-100 bg-indigo-50/50 px-4 py-3 sm:flex-row sm:items-center"><div><p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-500">Resource</p><p className="mt-1 text-sm font-medium text-zinc-900">{selectedResource.name}</p></div><Button variant="ghost" onClick={clearResource}><X className="h-3.5 w-3.5" /> Clear Resource Filter</Button></div>}
-        {qa === "loading" ? <LoadingPage /> : qa === "no-history" ? <EmptyState title="No health history yet" description="Health metrics will appear after pipelines run, validation checks execute, and data sources are monitored over time." icon={<HeartPulse className="h-4 w-4" />} tone="neutral" /> : qa === "filtered-empty" ? <EmptyState title="No health metrics match these filters" description="Try changing the environment, resource, or time range." icon={<HeartPulse className="h-4 w-4" />} tone="neutral" action={<Button onClick={clearFilters}>Clear Filters</Button>} /> : <>
-            {comparisonUnavailable && <div className="mb-7 rounded-lg border border-zinc-200 bg-white p-4"><p className="text-sm font-semibold text-zinc-900">Not enough history for comparison</p><p className="mt-1 text-xs text-zinc-500">Current health metrics are available, but a previous comparison period has not yet been collected.</p></div>}
-            {qa === "stale" && <div className="mb-7 rounded-lg border border-amber-200 bg-amber-50 p-4"><p className="flex items-center gap-2 text-sm font-semibold text-amber-900"><AlertTriangle className="h-4 w-4" /> Health metrics may be stale</p><p className="mt-1 font-mono text-[10px] text-amber-700">HEALTH_METRICS_STALE</p><p className="mt-2 text-xs text-amber-900">The latest health aggregation completed 2 hours ago. <span className="font-medium">Last Updated: 10:02 AM.</span></p><p className="mt-1 text-xs text-amber-800">Recommended Action: Use Monitoring for the latest operational state.</p><Button className="mt-3" onClick={() => router.push("/monitoring")}>View Monitoring</Button></div>}
-            {gap && <div className="mb-7 rounded-lg border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-900">Incomplete metric coverage</p><p className="mt-1 font-mono text-[10px] text-amber-700">HEALTH_METRIC_DATA_GAP</p><p className="mt-2 text-xs text-amber-900">{dataGapMessage} Trend lines break where coverage is missing.</p></div>}
-            <section><Card title="Platform Health" description="Historical platform-wide health for the selected period."><div className="p-4"><OperationalStatus result={platformResult} statusLabel={platformStatus} details={[{ label: "Compared with previous period", value: comparisonUnavailable ? "Comparison unavailable" : healthy ? "Stable" : critical ? "Degraded" : "Declined" }, { label: "Selected period", value: timeRangeOptions.find((item) => item.value === range)?.label ?? range }]} action={critical ? <Button onClick={() => router.push("/monitoring")}>View Monitoring</Button> : undefined} /></div></Card></section>
-            <section className="mt-7"><h2 className="mb-3 text-[15px] font-semibold text-zinc-900">Core Health Metrics</h2><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">{coreMetrics.map((metric) => <HealthMetricCard key={metric.key} metric={metric} healthy={healthy} critical={critical} unavailable={comparisonUnavailable} />)}</div></section>
-            <section className="mt-7"><Card title="Pipeline Reliability" description="Aggregated scheduled and manual pipeline outcomes over time." action={<Button variant="ghost" className="h-7" onClick={() => router.push(failedRunsHref)}>View Failed Runs</Button>}><MetricTrendPanel title="Pipeline Success Rate" current={healthy ? "99.5%" : "98.7%"} previous={comparisonUnavailable ? "Unavailable" : "99.3%"} comparison={healthy ? "+0.2%" : "-0.6%"} favorable={healthy} range={range} series={trends.reliability} suffix="%" threshold={{ value: 98, label: "Healthy threshold 98%" }} gap={gap}><SummaryStats items={[{ label: "Successful Runs", value: "1,142" }, { label: "Failed Runs", value: healthy ? "4" : "15" }, { label: "Cancelled", value: "4" }, { label: "Aggregation", value: range === "24h" ? "Hourly" : range === "90d" ? "Weekly" : "Daily" }]} />{!healthy && <Degradation code="PIPELINE_RELIABILITY_DEGRADED" message="Pipeline success rate fell below the 98% health threshold on 2 of the last 7 days." action="Review pipelines contributing most to failed executions." />}</MetricTrendPanel><DataTable headers={[{ label: "Pipeline" }, { label: "Success Rate" }, { label: "Previous", hide: "hidden md:table-cell" }, { label: "Failed Runs", hide: "hidden lg:table-cell" }, { label: "Status" }]} rows={reliabilityRows.filter((row) => resource === "All" || row.id === resource).map((row) => [<button className="font-medium text-zinc-800 hover:text-indigo-700" onClick={() => router.push(pipelineHref(row.id))}>{row.name}</button>, <span className="font-medium tabular-nums">{row.current}</span>, row.previous, row.failures, <StatusBadge status={healthy ? "Healthy" : row.status} />])} /></Card></section>
-            <section className="mt-7"><Card title="Runtime Performance" description="Average pipeline execution duration across the selected period."><MetricTrendPanel title="Average Pipeline Runtime" current="2m 18s" previous={comparisonUnavailable ? "Unavailable" : "2m 05s"} comparison="+13s" favorable={false} range={range} series={trends.runtime} suffix="s" gap={gap}>{!healthy && <Degradation code="PIPELINE_RUNTIME_DEGRADED" message="Average pipeline runtime increased compared with the previous period, led by Billing Reconciliation." action="Review pipelines with the largest runtime increases." />}</MetricTrendPanel><DataTable headers={[{ label: "Pipeline" }, { label: "Avg Runtime" }, { label: "Previous", hide: "hidden md:table-cell" }, { label: "Change", hide: "hidden lg:table-cell" }, { label: "Status" }]} rows={runtimeRows.filter((row) => resource === "All" || row.id === resource).map((row) => [<button className="font-medium text-zinc-800 hover:text-indigo-700" onClick={() => router.push(pipelineHref(row.id))}>{row.name}</button>, row.current, row.previous, row.change, <StatusBadge status={healthy ? "Healthy" : row.status} />])} /></Card></section>
-            <section className="mt-7"><Card title="Schedule Adherence" description="Scheduled executions starting inside their expected windows." action={<Button variant="ghost" className="h-7" onClick={() => router.push(`/pipeline-runs?${new URLSearchParams({ time: compatibleRunRange }).toString()}`)}>View Pipeline Runs</Button>}><MetricTrendPanel title="Schedule Adherence" current="99.3%" previous={comparisonUnavailable ? "Unavailable" : "99.7%"} comparison="-0.4%" favorable={false} range={range} series={trends.schedule} suffix="%" threshold={{ value: 99, label: "Healthy threshold 99%" }} gap={gap}><SummaryStats items={[{ label: "Expected Runs", value: "1,164" }, { label: "On Time", value: "1,156" }, { label: "Late", value: "6" }, { label: "Missed", value: "2" }]} />{!healthy && <Degradation code="SCHEDULE_ADHERENCE_DEGRADED" message="Overall schedule adherence remains within the healthy threshold, but 2 pipelines had late or missed executions during the selected period." action="Review late and missed pipeline executions." />}</MetricTrendPanel><DataTable headers={[{ label: "Pipeline" }, { label: "Adherence" }, { label: "Late", hide: "hidden md:table-cell" }, { label: "Missed", hide: "hidden lg:table-cell" }, { label: "Status" }]} rows={scheduleRows.map((row) => [<button className="font-medium text-zinc-800 hover:text-indigo-700" onClick={() => router.push(pipelineHref(row.id))}>{row.name}</button>, row.adherence, row.late, row.missed, <StatusBadge status={healthy ? "Healthy" : row.status} />])} /></Card></section>
-            <section className="mt-7"><Card title="Data Freshness" description="Monitored data arriving inside its expected freshness window."><MetricTrendPanel title="Freshness Compliance" current="96.4%" previous={comparisonUnavailable ? "Unavailable" : "98.2%"} comparison="-1.8%" favorable={false} range={range} series={trends.freshness} suffix="%" threshold={{ value: 98, label: "Healthy threshold 98%" }} gap={gap}><SummaryStats items={[{ label: "Healthy Datasets", value: "27 / 28" }, { label: "Stale", value: healthy ? "0" : "1" }]} />{!healthy && <Degradation code="DATA_FRESHNESS_DEGRADED" message="One monitored dataset has exceeded its expected freshness window." action="Review the affected pipeline and latest successful execution." />}</MetricTrendPanel><DataTable headers={[{ label: "Dataset" }, { label: "Pipeline" }, { label: "Expected", hide: "hidden md:table-cell" }, { label: "Current Age", hide: "hidden lg:table-cell" }, { label: "Status" }]} rows={freshnessRows.map((row) => [<span className="font-medium text-zinc-800">{row.dataset}</span>, <button className="text-zinc-700 hover:text-indigo-700" onClick={() => router.push(pipelineHref(row.id))}>{row.pipeline}</button>, row.expected, row.age, <StatusBadge status={healthy ? "Healthy" : row.status} />])} /></Card></section>
-            <section className="mt-7"><Card title="Source Connectivity" description="Historical source availability and connection reliability.">{qa === "partial" ? <div className="p-4"><ErrorState title="Source connectivity metrics unavailable" description="Other Health Metrics remain available." actionLabel="Try Again" technicalDetails={[{ label: "Platform Code", value: "SOURCE_HEALTH_METRICS_UNAVAILABLE" }, { label: "Vendor / HTTP Code", value: "503" }]} onRetry={() => selectQa("warning")} /></div> : <><MetricTrendPanel title="Source Availability" current="99.92% Availability" previous={comparisonUnavailable ? "Unavailable" : "99.96%"} comparison="-0.04%" favorable={false} range={range} series={trends.availability} suffix="%" threshold={{ value: 99.9, label: "Healthy threshold 99.9%" }} gap={gap}><SummaryStats items={[{ label: "Healthy Sources", value: "7 / 8" }, { label: "Average Connection Latency", value: "92 ms" }, { label: "Connection Failures", value: healthy ? "1" : "12" }]} />{!healthy && <Degradation code="SOURCE_RELIABILITY_DEGRADED" message="Overall source availability remains within the healthy threshold, but Billing PostgreSQL experienced elevated failure activity during the selected period." action="Review the source's connection health and recent logs." buttons={<><Button onClick={() => router.push(sourceHref("billing-postgres"))}>View Data Source</Button><Button onClick={() => router.push(`/logs?${new URLSearchParams({ scope: "source", source: "billing-postgres", time: range, code: "SOURCE_CONNECTION_FAILED" }).toString()}`)}>View Logs</Button></>} />}</MetricTrendPanel><DataTable headers={[{ label: "Source" }, { label: "Availability" }, { label: "Avg Latency", hide: "hidden md:table-cell" }, { label: "Connection Failures", hide: "hidden lg:table-cell" }, { label: "Status" }]} rows={sourceRows.filter((row) => resource === "All" || row.id === resource).map((row) => [<button className="font-medium text-zinc-800 hover:text-indigo-700" onClick={() => router.push(sourceHref(row.id))}>{row.name}</button>, row.availability, row.latency, row.failures, <StatusBadge status={row.status === "Disabled" ? "Disabled" : healthy ? "Healthy" : row.status} />])} /></>}</Card></section>
-            <section className="mt-7"><Card title="Validation Quality" description="Historical validation outcomes; not-evaluated checks are excluded from the pass rate." action={<Button variant="ghost" className="h-7" onClick={() => router.push(`/validation?${contextParams.toString()}`)}>View Validation</Button>}><MetricTrendPanel title="Validation Pass Rate" current="97.8% Pass Rate" previous={comparisonUnavailable ? "Unavailable" : "99.1%"} comparison="-1.3%" favorable={false} range={range} series={trends.validation} suffix="%" threshold={{ value: 98, label: "Healthy threshold 98%" }} gap={gap}><SummaryStats items={[{ label: "Checks Evaluated", value: "3,842" }, { label: "Passed", value: "3,757" }, { label: "Warning Failures", value: "72" }, { label: "Blocking Failures", value: "13" }, { label: "Not Evaluated", value: "6" }]} />{!healthy && <Degradation code="VALIDATION_QUALITY_DEGRADED" message="Validation pass rate declined from 99.1% to 97.8%." action="Review checks contributing most to validation failures." />}</MetricTrendPanel><DataTable headers={[{ label: "Check" }, { label: "Failure Rate" }, { label: "Failures", hide: "hidden md:table-cell" }, { label: "Severity", hide: "hidden lg:table-cell" }, { label: "Status" }]} rows={validationRows.map((row) => [<button className="font-medium text-zinc-800 hover:text-indigo-700" onClick={() => router.push(`/validation/${row.id}`)}>{row.name}</button>, row.rate, row.failures, `${row.severity} severity`, <StatusBadge status={healthy ? "Healthy" : row.status} />])} /></Card></section>
-            <section className="mt-7"><Card title="Resources Requiring Review" description="Resources contributing most to historical health degradation."><DataTable headers={[{ label: "Resource" }, { label: "Type", hide: "hidden md:table-cell" }, { label: "Health Signal" }, { label: "Current", hide: "hidden lg:table-cell" }, { label: "Previous", hide: "hidden xl:table-cell" }, { label: "Status" }]} rows={(healthy ? [] : reviewRows).filter((row) => resource === "All" || row.id === resource).map((row) => [<div><button className="font-medium text-zinc-800 hover:text-indigo-700" onClick={() => router.push(row.type === "Data Source" ? sourceHref(row.id) : pipelineHref(row.id))}>{row.resource}</button>{row.id === "events-processing" && <button className="mt-1 block text-[10px] font-medium text-indigo-600" onClick={() => router.push("/alerts/ALT-1042")}>Active Alert: ALT-1042</button>}</div>, row.type, row.signal, row.current, row.previous, <StatusBadge status={row.status} />])} />{healthy && <div className="p-4"><EmptyState title="No resources require review" description="All resource health signals remain within expected thresholds for this period." /></div>}</Card></section>
-        </>}
-        {qaPanel}
-    </div>;
+  const params = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const requestedWindow = params.get("time");
+  const [windowValue, setWindowValue] = useState<HealthWindow>(
+    HEALTH_WINDOWS.includes(requestedWindow as HealthWindow) ? (requestedWindow as HealthWindow) : "7d",
+  );
+  const [environment, setEnvironment] = useState(params.get("environment") ?? "production");
+  const [resourceType, setResourceType] = useState<ResourceType>(
+    params.get("resourceType") === "pipeline" || params.get("resourceType") === "source"
+      ? (params.get("resourceType") as ResourceType)
+      : "all",
+  );
+  const [resource, setResource] = useState(params.get("resource") ?? "all");
+  const [pipelineOptions, setPipelineOptions] = useState<ResourceOption[]>([]);
+  const [sourceOptions, setSourceOptions] = useState<ResourceOption[]>([]);
+
+  const query = {
+    window: windowValue,
+    environment: environment === "all" ? undefined : environment,
+    pipeline: resourceType === "pipeline" && resource !== "all" ? resource : undefined,
+    source: resourceType === "source" && resource !== "all" ? resource : undefined,
+  };
+  const request = useApiQuery<HealthMetricsResponse>("/api/v1/health-metrics", query);
+
+  useEffect(() => {
+    if (!request.data) return;
+    setPipelineOptions((current) => {
+      const options = new Map(current.map((item) => [item.key, item]));
+      request.data?.pipeline_reliability.forEach((item) =>
+        options.set(item.pipeline.pipeline_key, { key: item.pipeline.pipeline_key, name: item.pipeline.name }),
+      );
+      return [...options.values()];
+    });
+    setSourceOptions((current) => {
+      const options = new Map(current.map((item) => [item.key, item]));
+      request.data?.current_source_connectivity.forEach((item) =>
+        options.set(item.source_key, { key: item.source_key, name: item.name }),
+      );
+      return [...options.values()];
+    });
+  }, [request.data]);
+
+  const syncUrl = (next: {
+    window?: HealthWindow;
+    environment?: string;
+    resourceType?: ResourceType;
+    resource?: string;
+  }) => {
+    const nextParams = new URLSearchParams(params.toString());
+    const values = {
+      time: next.window ?? windowValue,
+      environment: next.environment ?? environment,
+      resourceType: next.resourceType ?? resourceType,
+      resource: next.resource ?? resource,
+    };
+    for (const [key, value] of Object.entries(values)) {
+      const defaultValue = key === "time" ? "7d" : key === "environment" ? "production" : "all";
+      if (value === defaultValue) nextParams.delete(key);
+      else nextParams.set(key, value);
+    }
+    router.replace(nextParams.size ? `${pathname}?${nextParams}` : pathname);
+  };
+
+  const availableResources = resourceType === "pipeline" ? pipelineOptions : resourceType === "source" ? sourceOptions : [];
+  const resourceOptions = useMemo(() => {
+    const options = [...availableResources];
+    if (resource !== "all" && !options.some((item) => item.key === resource)) {
+      options.push({ key: resource, name: resource });
+    }
+    return [{ value: "all", label: "All Resources" }, ...options.map((item) => ({ value: item.key, label: item.name }))];
+  }, [availableResources, resource]);
+
+  const filters = (
+    <div className="flex flex-wrap items-end gap-2">
+      <FilterSelect
+        label="Health metrics window"
+        value={windowValue}
+        options={windowOptions}
+        onChange={(value) => {
+          const next = value as HealthWindow;
+          setWindowValue(next);
+          syncUrl({ window: next });
+        }}
+      />
+      <FilterSelect label="Environment" value={environment} options={environmentOptions} onChange={(value) => {
+        setEnvironment(value);
+        syncUrl({ environment: value });
+      }} />
+      <FilterSelect
+        label="Resource type"
+        value={resourceType}
+        options={[
+          { value: "all", label: "All Resources" },
+          { value: "pipeline", label: "Pipelines" },
+          { value: "source", label: "Data Sources" },
+        ]}
+        onChange={(value) => {
+          const next = value as ResourceType;
+          setResourceType(next);
+          setResource("all");
+          syncUrl({ resourceType: next, resource: "all" });
+        }}
+      />
+      {resourceType !== "all" && <FilterSelect label="Resource" value={resource} options={resourceOptions} onChange={(value) => {
+        setResource(value);
+        syncUrl({ resource: value });
+      }} />}
+      <Button onClick={request.retry}><RefreshCw className="h-3.5 w-3.5" /> Refresh</Button>
+    </div>
+  );
+
+  if (request.loading && !request.data) return <HealthMetricsPageSkeleton />;
+  if (request.error) {
+    return (
+      <div className="animate-enter">
+        <Breadcrumbs items={[{ label: "Platform" }, { label: "Health Metrics" }]} />
+        <PageHeader title="Health Metrics" description="Persisted reliability, performance, quality, and current connectivity signals." action={filters} />
+        <ErrorState
+          title={request.error.kind === "permission" ? "Permission denied" : request.error.kind === "unavailable" ? "Health metrics service unavailable" : "Health Metrics couldn't be loaded"}
+          description={request.error.message}
+          actionLabel={request.error.retryable ? "Try Again" : undefined}
+          onRetry={request.error.retryable ? request.retry : undefined}
+          technicalDetails={[{ label: "Platform Code", value: request.error.code }]}
+        />
+      </div>
+    );
+  }
+  if (!request.data) return null;
+
+  const data = request.data;
+  const supportedAvailable = [
+    data.metrics.pipeline_success_rate,
+    data.metrics.average_runtime,
+    data.metrics.validation_pass_rate,
+  ].filter((metric) => metric.availability === "AVAILABLE").length;
+
+  return (
+    <div className="animate-enter">
+      <Breadcrumbs items={[{ label: "Platform" }, { label: "Health Metrics" }]} />
+      <PageHeader
+        title="Health Metrics"
+        description="Persisted reliability, performance, quality, and current connectivity signals."
+        eyebrow={<>Generated <span className="font-mono">{data.generated_at}</span></>}
+        action={filters}
+      />
+
+      <Card title="Historical Metric Coverage" description="Availability is reported independently for every metric.">
+        <div className="p-4">
+          <TechnicalDetails items={[
+            { label: "Available supported metrics", value: `${supportedAvailable} / 3` },
+            { label: "Selected period", value: `${data.period.start} — ${data.period.end}` },
+            { label: "Comparison period", value: `${data.comparison_period.start} — ${data.comparison_period.end}` },
+            { label: "Scope", value: data.scope.pipeline ?? data.scope.source ?? data.scope.environment ?? "All" },
+          ]} />
+        </div>
+      </Card>
+
+      <section className="mt-7">
+        <h2 className="mb-3 text-[15px] font-semibold text-zinc-900">Core Health Metrics</h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+          {metricDefinitions.map((definition) => {
+            const metric = data.metrics[definition.key];
+            const presented = presentMetric(metric);
+            const comparison = presented.previous === "Not available" || presented.previous === "Insufficient data"
+              ? `${presented.detail} · Previous: ${presented.previous}`
+              : `Previous: ${presented.previous} · Delta: ${presented.delta}`;
+            return <MetricCard key={definition.key} label={definition.label} value={presented.value} detail={comparison} icon={definition.icon} tone={metricTone(metric)} />;
+          })}
+        </div>
+      </section>
+
+      <div className="mt-7 grid gap-7 xl:grid-cols-3">
+        <MetricTrend title="Pipeline Success Rate" metric={data.metrics.pipeline_success_rate} color="#4f46e5" />
+        <MetricTrend title="Average Runtime" metric={data.metrics.average_runtime} color="#d97706" />
+        <MetricTrend title="Validation Pass Rate" metric={data.metrics.validation_pass_rate} color="#059669" />
+      </div>
+
+      <section className="mt-7">
+        <Card title="Pipeline Reliability" description="Backend historical outcomes by canonical pipeline.">
+          {data.pipeline_reliability.length ? data.pipeline_reliability.map((item) => {
+            const success = presentMetric(item.success_rate);
+            const runtime = presentMetric(item.average_runtime);
+            return <Row key={item.pipeline.pipeline_key}>
+              <Cell label="Pipeline"><Link className="font-medium text-indigo-700" href={`/pipelines/${item.pipeline.pipeline_key}`}>{item.pipeline.name}</Link></Cell>
+              <Cell label="Status"><StatusBadge status={item.pipeline.operational_status === "FAILED" ? "Failed" : item.pipeline.operational_status[0] + item.pipeline.operational_status.slice(1).toLowerCase()} /></Cell>
+              <Cell label="Success rate">{success.value}</Cell>
+              <Cell label="Average runtime">{runtime.value}</Cell>
+              <Cell label="Runs">{item.successful_runs} successful · {item.failed_runs} failed · {item.running_runs} running</Cell>
+            </Row>;
+          }) : <div className="p-4"><EmptyState title="No pipeline history" description="No pipeline executions match this period and scope." icon={<Gauge className="h-4 w-4" />} tone="neutral" /></div>}
+        </Card>
+      </section>
+
+      <section className="mt-7">
+        <Card title="Validation Quality" description="Not-evaluated checks remain separate from the pass-rate denominator.">
+          {data.validation_quality.length ? data.validation_quality.map((item) => {
+            const rate = presentMetric(item.pass_rate);
+            return <Row key={item.check_key}>
+              <Cell label="Check"><Link className="font-medium text-indigo-700" href={`/validation?check=${encodeURIComponent(item.check_key)}`}>{item.name}</Link></Cell>
+              <Cell label="Pipeline"><Link href={`/pipelines/${item.pipeline.pipeline_key}`}>{item.pipeline.name}</Link></Cell>
+              <Cell label="Pass rate">{rate.value}</Cell>
+              <Cell label="Results">{item.passed} passed · {item.failed} failed · {item.not_evaluated} not evaluated</Cell>
+              <Cell label="Failures">{item.blocking_failed} blocking · {item.warning_failed} warning</Cell>
+            </Row>;
+          }) : <div className="p-4"><EmptyState title="No validation history" description="No validation executions match this period and scope." icon={<FileCheck2 className="h-4 w-4" />} tone="neutral" /></div>}
+        </Card>
+      </section>
+
+      <section className="mt-7">
+        <Card title="Current Source Connectivity" description="CURRENT_SNAPSHOT — current state only, not historical availability or uptime.">
+          {data.current_source_connectivity.length ? data.current_source_connectivity.map((source) => <Row key={source.source_key}>
+            <Cell label="Source"><Link className="font-medium text-indigo-700" href={`/data-sources/${source.source_key}`}>{source.name}</Link></Cell>
+            <Cell label="Current status"><StatusBadge status={source.operational_status[0] + source.operational_status.slice(1).toLowerCase()} /></Cell>
+            <Cell label="Snapshot type">CURRENT_SNAPSHOT</Cell>
+            <Cell label="Type">{source.source_type}</Cell>
+            <Cell label="Observed">{source.last_observed_at ?? "Not available"}</Cell>
+          </Row>) : <div className="p-4"><EmptyState title="No current source snapshot" description="No sources match this scope." icon={<Database className="h-4 w-4" />} tone="neutral" /></div>}
+        </Card>
+      </section>
+
+      <section className="mt-7">
+        <Card title="Resources Requiring Review" description="Backend-selected resources contributing to current or historical degradation.">
+          {data.resources_requiring_review.length ? data.resources_requiring_review.map((resourceItem) => {
+            const href = reviewResourceHref(resourceItem);
+            return <Row key={`${resourceItem.resource_type}:${resourceItem.resource_key}`}>
+              <Cell label="Resource">{href ? <Link className="font-medium text-indigo-700" href={href}>{resourceItem.name}</Link> : resourceItem.name}</Cell>
+              <Cell label="Type">{resourceItem.resource_type}</Cell>
+              <Cell label="Signal">{resourceItem.signal}</Cell>
+              <Cell label="Severity"><StatusBadge status={resourceItem.severity === "CRITICAL" ? "Critical" : "Warning"} /></Cell>
+              <Cell label="Key"><span className="font-mono">{resourceItem.resource_key}</span></Cell>
+            </Row>;
+          }) : <div className="p-4"><EmptyState title="No resources require review" description="The aggregation returned no review resources for this scope." /></div>}
+        </Card>
+      </section>
+
+      <Card className="mt-7" title="Snapshot Context" description="Exact server-provided aggregation timestamps and scope.">
+        <div className="p-4">
+          <TechnicalDetails items={[
+            { label: "Generated at", value: data.generated_at },
+            { label: "Period start", value: data.period.start },
+            { label: "Period end", value: data.period.end },
+            { label: "Environment", value: data.scope.environment ?? "All" },
+            { label: "Pipeline", value: data.scope.pipeline ?? "All" },
+            { label: "Source", value: data.scope.source ?? "All" },
+          ]} />
+        </div>
+      </Card>
+    </div>
+  );
 }
 
-export function HealthMetricsPageSkeleton() { return <div><Breadcrumbs items={[{ label: "Platform" }, { label: "Health Metrics" }]} /><PageHeader title="Health Metrics" description="Track platform reliability, performance, freshness, and data quality over time." /><LoadingPage /></div>; }
+export function HealthMetricsPageSkeleton() {
+  return <div className="space-y-7"><Skeleton className="h-20" /><Skeleton className="h-36" /><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div><Skeleton className="h-72" /></div>;
+}
