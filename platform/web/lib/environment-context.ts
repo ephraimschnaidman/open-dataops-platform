@@ -18,6 +18,10 @@ export function isEnvironment(value: string | null): value is Environment {
     return environments.includes(value as Environment);
 }
 
+export function environmentApiKey(value: Environment): "production" | "staging" | "development" {
+    return value.toLowerCase() as "production" | "staging" | "development";
+}
+
 function publish() {
     snapshot = { currentEnvironment, defaultEnvironment };
     listeners.forEach((listener) => listener());

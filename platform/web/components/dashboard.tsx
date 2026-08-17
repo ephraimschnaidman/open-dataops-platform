@@ -1,541 +1,272 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
-    Activity,
-    ArrowRight,
-    ChevronRight,
-    CircleAlert,
-    Database,
-    GitBranch,
-    MoreHorizontal,
-    Network,
-    ShieldCheck,
-    X,
+  Activity,
+  CircleAlert,
+  Database,
+  FileCheck2,
+  GitBranch,
+  Gauge,
+  Network,
+  RefreshCw,
 } from "lucide-react";
+
+import type { DashboardResponse } from "@/lib/api-contract";
 import {
-    activities as allActivities,
-    healthItems as productionHealthItems,
-    issues as productionIssues,
-    metrics,
-    pipelineRuns as allPipelineRuns,
-    type Issue,
-} from "@/lib/dashboard-data";
+  activeIssueHref,
+  activityHref,
+  metricTone,
+  presentMetric,
+  presentOverallState,
+} from "@/lib/aggregation-adapters";
+import { latestRunHref, presentDashboardSummary } from "@/lib/dashboard-adapters";
+import { environmentApiKey, useEnvironmentContext } from "@/lib/environment-context";
+import { useApiQuery } from "@/lib/use-api-query";
 import {
-    EmptyState,
-    ErrorState,
-    MetricCard,
-    Section,
-    Skeleton,
-    StatusBadge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  MetricCard,
+  OperationalStatus,
+  PageHeader,
+  Section,
+  Skeleton,
+  StatusBadge,
+  TechnicalDetails,
 } from "@/components/ui";
-import { pipelines } from "@/lib/pipelines-data";
-import { useEnvironmentContext } from "@/lib/environment-context";
 
-function MetricCards() {
-    const { currentEnvironment } = useEnvironmentContext();
-    const icons = [GitBranch, ShieldCheck, CircleAlert, Activity];
-    const scopedPipelines = pipelines.filter(
-        (pipeline) => pipeline.environment === currentEnvironment,
-    );
-    const scopedRuns = allPipelineRuns.filter((run) =>
-        scopedPipelines.some((pipeline) => pipeline.name === run.pipeline),
-    );
-    const scopedMetrics =
-        currentEnvironment === "Production"
-            ? metrics
-            : [
-                  {
-                      label: "Pipelines",
-                      value: String(scopedPipelines.length),
-                      detail: `Configured in ${currentEnvironment}`,
-                      tone: "neutral" as const,
-                  },
-                  {
-                      label: "Successful runs",
-                      value: String(
-                          scopedRuns.filter((run) => run.status === "Success")
-                              .length,
-                      ),
-                      detail: "Recent demo activity",
-                      tone: "positive" as const,
-                  },
-                  {
-                      label: "Failed runs",
-                      value: String(
-                          scopedRuns.filter((run) => run.status === "Failed")
-                              .length,
-                      ),
-                      detail: "Recent demo activity",
-                      tone: "warning" as const,
-                  },
-                  {
-                      label: "Active alerts",
-                      value: "0",
-                      detail: `No active alerts in ${currentEnvironment}`,
-                      tone: "neutral" as const,
-                  },
-              ];
-    return (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {scopedMetrics.map((metric, index) => (
-                <MetricCard
-                    key={metric.label}
-                    {...metric}
-                    icon={icons[index]}
-                />
-            ))}
-        </div>
-    );
+const summaryIcons = [GitBranch, Activity, CircleAlert, CircleAlert, Database];
+const indicatorDefinitions = [
+  { key: "pipeline_success_rate", label: "Pipeline Success Rate", icon: Gauge },
+  { key: "validation_pass_rate", label: "Validation Pass Rate", icon: FileCheck2 },
+  { key: "healthy_sources", label: "Healthy Sources", icon: Database },
+  { key: "freshness_compliance", label: "Freshness Compliance", icon: Activity },
+] as const;
+
+function Row({ children, columns = 4 }: { children: React.ReactNode; columns?: 4 | 5 }) {
+  const layout = columns === 5
+    ? "md:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,1fr))]"
+    : "md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]";
+  return <div className={`grid gap-2 border-b border-zinc-100 px-4 py-3 last:border-0 ${layout}`}>{children}</div>;
 }
 
-function Issues({ onSelect }: { onSelect: (issue: Issue) => void }) {
-    const { currentEnvironment } = useEnvironmentContext();
-    const issues = currentEnvironment === "Production" ? productionIssues : [];
-    if (!issues.length) return <EmptyState />;
-    return (
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-card">
-            <div className="hidden grid-cols-[1.3fr_1.5fr_100px_100px_20px] gap-4 border-b border-zinc-200 bg-zinc-50/70 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 md:grid">
-                <span>Resource</span>
-                <span>Issue</span>
-                <span>Severity</span>
-                <span>Detected</span>
-                <span />
-            </div>
-            {issues.map((issue) => (
-                <button
-                    key={issue.id}
-                    onClick={() => onSelect(issue)}
-                    className="group grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-zinc-100 px-4 py-3 text-left transition last:border-0 hover:bg-zinc-50 md:grid-cols-[1.3fr_1.5fr_100px_100px_20px] md:gap-4"
-                >
-                    <div className="flex min-w-0 items-center gap-2.5">
-                        <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${issue.severity === "Critical" ? "bg-rose-500" : "bg-amber-400"}`}
-                        />
-                        <span className="truncate font-mono text-xs font-medium text-zinc-800">
-                            {issue.resource}
-                        </span>
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-zinc-300 transition group-hover:translate-x-0.5 group-hover:text-zinc-600 md:order-last" />
-                    <span className="col-span-2 truncate pl-[18px] text-xs text-zinc-600 md:col-span-1 md:pl-0">
-                        {issue.kind}
-                    </span>
-                    <span className="hidden md:block">
-                        <StatusBadge status={issue.severity} />
-                    </span>
-                    <span className="hidden text-xs text-zinc-500 md:block">
-                        {issue.time}
-                    </span>
-                </button>
-            ))}
-        </div>
-    );
+function Cell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400 md:hidden">{label}</p>
+      <div className="mt-0.5 truncate text-xs text-zinc-700 md:mt-0">{children}</div>
+    </div>
+  );
 }
 
-function PipelineTable() {
-    const router = useRouter();
-    const { currentEnvironment } = useEnvironmentContext();
-    const pipelineRuns = allPipelineRuns.filter((run) =>
-        pipelines.some(
-            (pipeline) =>
-                pipeline.name === run.pipeline &&
-                pipeline.environment === currentEnvironment,
-        ),
-    );
-    const [error, setError] = useState(false);
-    if (error) return <ErrorState onRetry={() => setError(false)} />;
-    if (!pipelineRuns.length)
-        return (
-            <EmptyState
-                title={`No recent pipeline runs in ${currentEnvironment}`}
-                description="Runs will appear after a pipeline executes in this environment."
-            />
-        );
-    return (
-        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-card">
-            <table className="w-full min-w-[760px] border-collapse text-left">
-                <thead>
-                    <tr className="border-b border-zinc-200 bg-zinc-50/70 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                        <th className="px-4 py-2.5">Pipeline</th>
-                        <th className="px-3 py-2.5">Status</th>
-                        <th className="px-3 py-2.5">Started</th>
-                        <th className="px-3 py-2.5">Duration</th>
-                        <th className="px-3 py-2.5">Records</th>
-                        <th className="px-3 py-2.5">Trigger</th>
-                        <th className="w-10 px-3 py-2.5">
-                            <span className="sr-only">Actions</span>
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {pipelineRuns.map((run) => (
-                        <tr
-                            key={run.id}
-                            tabIndex={0}
-                            onClick={() =>
-                                router.push(`/pipeline-runs/${run.id}`)
-                            }
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter")
-                                    router.push(`/pipeline-runs/${run.id}`);
-                            }}
-                            className="group cursor-pointer border-b border-zinc-100 text-xs last:border-0 hover:bg-zinc-50"
-                        >
-                            <td className="px-4 py-3">
-                                <div className="flex items-center gap-2.5">
-                                    <span className="grid h-7 w-7 place-items-center rounded-md border border-zinc-200 bg-white text-zinc-400">
-                                        <GitBranch className="h-3.5 w-3.5" />
-                                    </span>
-                                    <span className="font-mono font-medium text-zinc-800">
-                                        {run.pipeline}
-                                    </span>
-                                </div>
-                            </td>
-                            <td className="px-3 py-3">
-                                <StatusBadge status={run.status} />
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-3 text-zinc-500">
-                                {run.started}
-                            </td>
-                            <td className="px-3 py-3 tabular-nums text-zinc-600">
-                                {run.duration}
-                            </td>
-                            <td className="px-3 py-3 tabular-nums text-zinc-600">
-                                {run.records}
-                            </td>
-                            <td className="px-3 py-3 text-zinc-500">
-                                {run.trigger}
-                            </td>
-                            <td className="px-3 py-3">
-                                <button
-                                    aria-label={`Actions for ${run.pipeline}`}
-                                    className="rounded p-1 text-zinc-400 opacity-0 hover:bg-zinc-200 group-hover:opacity-100"
-                                >
-                                    <MoreHorizontal className="h-4 w-4" />
-                                </button>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-            {process.env.NODE_ENV === "development" && <button className="sr-only" onClick={() => setError(true)}>
-                Show error state
-            </button>}
-        </div>
-    );
-}
-
-function HealthOverview() {
-    const { currentEnvironment } = useEnvironmentContext();
-    const healthItems =
-        currentEnvironment === "Production" ? productionHealthItems : [];
-    if (!healthItems.length)
-        return (
-            <EmptyState
-                title={`No health signals in ${currentEnvironment}`}
-                description="No demo health data requires attention in this environment."
-            />
-        );
-    return (
-        <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-card">
-            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-                {healthItems.map((item) => (
-                    <div key={item.label}>
-                        <div className="mb-2 flex items-start justify-between">
-                            <div>
-                                <p className="text-xs font-medium text-zinc-700">
-                                    {item.label}
-                                </p>
-                                <p className="mt-0.5 text-[11px] text-zinc-400">
-                                    {item.note}
-                                </p>
-                            </div>
-                            <span
-                                className={`text-sm font-semibold tabular-nums ${item.tone === "warning" ? "text-amber-700" : "text-zinc-900"}`}
-                            >
-                                {item.value}
-                            </span>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100">
-                            <div
-                                className={`h-full rounded-full ${item.tone === "warning" ? "bg-amber-400" : "bg-emerald-500"}`}
-                                style={{ width: `${item.progress}%` }}
-                            />
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
-
-function ActivityFeed() {
-    const { currentEnvironment } = useEnvironmentContext();
-    const activities = currentEnvironment === "Production" ? allActivities : [];
-    const icons = {
-        failed: CircleAlert,
-        connected: Database,
-        rule: ShieldCheck,
-        success: GitBranch,
-    };
-    if (!activities.length)
-        return (
-            <EmptyState
-                title={`No recent activity in ${currentEnvironment}`}
-                description="Activity will appear after resources in this environment run or change."
-            />
-        );
-    return (
-        <div className="rounded-lg border border-zinc-200 bg-white px-4 shadow-card">
-            {activities.map((item) => {
-                const Icon = icons[item.type as keyof typeof icons];
-                return (
-                    <div
-                        key={item.id}
-                        className="flex gap-3 border-b border-zinc-100 py-3 last:border-0"
-                    >
-                        <span
-                            className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${item.type === "failed" ? "bg-rose-50 text-rose-600" : item.type === "success" ? "bg-emerald-50 text-emerald-600" : "bg-zinc-100 text-zinc-500"}`}
-                        >
-                            <Icon className="h-3.5 w-3.5" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-medium text-zinc-700">
-                                {item.text}
-                            </p>
-                            <p className="mt-1 text-[11px] text-zinc-400">
-                                {item.actor} · {item.time}
-                            </p>
-                        </div>
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-function IssueDrawer({
-    issue,
-    onClose,
-    onInvestigate,
-}: {
-    issue: Issue | null;
-    onClose: () => void;
-    onInvestigate: (issue: Issue) => void;
-}) {
-    return (
-        <>
-            <button
-                aria-label="Close issue details"
-                onClick={onClose}
-                className={`fixed inset-0 z-30 bg-zinc-950/20 transition ${issue ? "opacity-100" : "pointer-events-none opacity-0"}`}
-            />
-            <aside
-                className={`fixed inset-y-0 right-0 z-40 w-full max-w-md border-l border-zinc-200 bg-white shadow-panel transition-transform duration-300 ${issue ? "translate-x-0" : "translate-x-full"}`}
-            >
-                <div className="flex h-14 items-center justify-between border-b border-zinc-200 px-5">
-                    <div className="flex items-center gap-2">
-                        <CircleAlert className="h-4 w-4 text-amber-500" />
-                        <span className="text-sm font-semibold">
-                            Issue details
-                        </span>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
-                    >
-                        <X className="h-4 w-4" />
-                    </button>
-                </div>
-                {issue && (
-                    <div className="p-5">
-                        <div className="flex items-center justify-between">
-                            <StatusBadge status={issue.severity} />
-                            <span className="font-mono text-[11px] text-zinc-400">
-                                {issue.id}
-                            </span>
-                        </div>
-                        <h3 className="mt-5 font-mono text-base font-semibold text-zinc-900">
-                            {issue.resource}
-                        </h3>
-                        <p className="mt-1 text-sm font-medium text-zinc-600">
-                            {issue.kind}
-                        </p>
-                        <p className="mt-4 text-sm leading-6 text-zinc-600">
-                            {issue.description}
-                        </p>
-                        <dl className="mt-6 divide-y divide-zinc-100 rounded-lg border border-zinc-200">
-                            <div className="flex justify-between p-3 text-xs">
-                                <dt className="text-zinc-500">Detected</dt>
-                                <dd className="font-medium text-zinc-800">
-                                    {issue.time}
-                                </dd>
-                            </div>
-                            <div className="flex justify-between p-3 text-xs">
-                                <dt className="text-zinc-500">Owner</dt>
-                                <dd className="font-medium text-zinc-800">
-                                    {issue.owner}
-                                </dd>
-                            </div>
-                            <div className="flex justify-between p-3 text-xs">
-                                <dt className="text-zinc-500">Environment</dt>
-                                <dd className="flex items-center gap-1.5 font-medium text-zinc-800">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                    Production
-                                </dd>
-                            </div>
-                        </dl>
-                        <div className="mt-6 rounded-lg border border-indigo-100 bg-indigo-50/60 p-4">
-                            <p className="text-xs font-semibold text-indigo-900">
-                                Recommended next step
-                            </p>
-                            <p className="mt-1.5 text-xs leading-5 text-indigo-800/80">
-                                {issue.nextStep}
-                            </p>
-                        </div>
-                        <div className="mt-6 flex gap-2">
-                            <button
-                                onClick={() => onInvestigate(issue)}
-                                className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-zinc-900 text-xs font-medium text-white hover:bg-zinc-800"
-                            >
-                                Investigate{" "}
-                                <ArrowRight className="h-3.5 w-3.5" />
-                            </button>
-                            <Link
-                                href={`/alerts/${issue.id}`}
-                                className="flex h-9 items-center rounded-md border border-zinc-200 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-                            >
-                                View Alert
-                            </Link>
-                        </div>
-                    </div>
-                )}
-            </aside>
-        </>
-    );
+function statusLabel(status: string): string {
+  return status === "FAILED"
+    ? "Failed"
+    : status === "SUCCESS"
+      ? "Success"
+      : status[0] + status.slice(1).toLowerCase();
 }
 
 export function Dashboard() {
-    const router = useRouter();
-    const { currentEnvironment } = useEnvironmentContext();
-    const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
+  const { currentEnvironment } = useEnvironmentContext();
+  const environment = environmentApiKey(currentEnvironment);
+  const request = useApiQuery<DashboardResponse>("/api/v1/dashboard", { environment });
+
+  if (request.loading && !request.data) return <DashboardSkeleton />;
+  if (request.error) {
     return (
-        <div className="animate-enter">
-            <div className="mb-7 flex items-end justify-between gap-4">
-                <div>
-                    <div className="mb-1.5 flex items-center gap-2 text-[11px] font-medium text-zinc-400">
-                        <Network className="h-3 w-3" /> {currentEnvironment}{" "}
-                        workspace
-                    </div>
-                    <h1 className="text-2xl font-semibold tracking-[-0.035em] text-zinc-950">
-                        Dashboard
-                    </h1>
-                    <p className="mt-1 text-sm text-zinc-500">
-                        Monitor the health and activity of your data platform.
-                    </p>
-                </div>
-                <div className="hidden items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-500 shadow-card sm:flex">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-50" />
-                    <span className="font-medium text-zinc-700">
-                        {currentEnvironment === "Production"
-                            ? "Platform operational"
-                            : `No active issues in ${currentEnvironment}`}
-                    </span>
-                    <span className="text-zinc-300">·</span> Updated just now
-                </div>
-            </div>
-            <Section
-                title="Platform status"
-                description="Operational summary for the last 24 hours"
-            >
-                <MetricCards />
-            </Section>
-            <Section
-                title="Needs attention"
-                description="Issues with the highest operational impact"
-                className="mt-7"
-                action={
-                    <Link
-                        href="/alerts"
-                        className="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-900"
-                    >
-                        View alerts <ChevronRight className="h-3.5 w-3.5" />
-                    </Link>
-                }
-            >
-                <Issues onSelect={setSelectedIssue} />
-            </Section>
-            <Section
-                title="Recent pipeline runs"
-                description="Latest activity across production pipelines"
-                className="mt-7"
-                action={
-                    <Link
-                        href="/pipeline-runs"
-                        className="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-900"
-                    >
-                        View all runs <ChevronRight className="h-3.5 w-3.5" />
-                    </Link>
-                }
-            >
-                <PipelineTable />
-            </Section>
-            <div className="mt-7 grid gap-7 xl:grid-cols-[1.35fr_0.85fr]">
-                <Section
-                    title="Platform health"
-                    description="Key service-level indicators"
-                    action={
-                        <Link
-                            href="/health-metrics?time=24h"
-                            className="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-900"
-                        >
-                            View Health Metrics{" "}
-                            <ChevronRight className="h-3.5 w-3.5" />
-                        </Link>
-                    }
-                >
-                    <HealthOverview />
-                </Section>
-                <Section
-                    title="Recent activity"
-                    description="Changes across your workspace"
-                >
-                    <ActivityFeed />
-                </Section>
-            </div>
-            <IssueDrawer
-                issue={selectedIssue}
-                onClose={() => setSelectedIssue(null)}
-                onInvestigate={(issue) =>
-                    router.push(
-                        issue.id === "ALT-1042"
-                            ? "/pipeline-runs/run_01J94EVT18"
-                            : issue.id === "ALT-1040"
-                              ? "/validation/order-id-unique"
-                              : `/alerts/${issue.id}`,
-                    )
-                }
-            />
-        </div>
+      <div className="animate-enter">
+        <PageHeader
+          title="Dashboard"
+          description="Current platform state, operational attention, and canonical activity."
+          eyebrow={<><Network className="h-3 w-3" /> {currentEnvironment} workspace</>}
+        />
+        <ErrorState
+          title={request.error.kind === "permission" ? "Permission denied" : request.error.kind === "unavailable" ? "Dashboard service unavailable" : "Dashboard couldn't be loaded"}
+          description={request.error.message}
+          actionLabel={request.error.retryable ? "Try Again" : undefined}
+          onRetry={request.error.retryable ? request.retry : undefined}
+          technicalDetails={[{ label: "Platform Code", value: request.error.code }]}
+        />
+      </div>
     );
+  }
+  if (!request.data) return null;
+
+  const data = request.data;
+  const overallState = presentOverallState(data.state_availability, data.overall_state);
+  const noEvaluableState = data.state_availability === "NO_DATA" || data.overall_state == null;
+  const overallResult = noEvaluableState
+    ? {
+        status: "Neutral" as const,
+        platformCode: "DASHBOARD_NO_DATA",
+        message: overallState,
+        recommendedAction: "Select another environment or allow operational observations to accumulate.",
+      }
+    : data.overall_state === "CRITICAL"
+      ? {
+          status: "Error" as const,
+          platformCode: "PLATFORM_OPERATIONAL_CRITICAL",
+          message: "Critical operational conditions require attention.",
+          recommendedAction: "Review the active issues and affected resources below.",
+        }
+      : data.overall_state === "WARNING"
+        ? {
+            status: "Warning" as const,
+            platformCode: "PLATFORM_OPERATIONAL_WARNING",
+            message: "Operational warnings require review.",
+            recommendedAction: "Review the active issues and affected resources below.",
+          }
+        : {
+            status: "Success" as const,
+            platformCode: "PLATFORM_OPERATIONAL_HEALTHY",
+            message: "Current evaluable resources are healthy.",
+            recommendedAction: "Continue monitoring current activity.",
+          };
+
+  const summary = presentDashboardSummary(data.summary);
+
+  return (
+    <div className="animate-enter">
+      <PageHeader
+        title="Dashboard"
+        description="Current platform state, operational attention, and canonical activity."
+        eyebrow={<><Network className="h-3 w-3" /> {currentEnvironment} workspace · Generated <span className="font-mono">{data.generated_at}</span></>}
+        action={<Button onClick={request.retry}><RefreshCw className="h-3.5 w-3.5" /> Refresh</Button>}
+      />
+
+      <Card title="Overall Operational State" description="Authoritative Dashboard aggregation state.">
+        <div className="p-4">
+          <OperationalStatus
+            result={overallResult}
+            statusLabel={noEvaluableState ? "Disabled" : data.overall_state === "CRITICAL" ? "Critical" : data.overall_state === "WARNING" ? "Warning" : "Healthy"}
+            details={[
+              { label: "State availability", value: data.state_availability },
+              { label: "Overall state", value: overallState },
+              { label: "Dashboard period", value: `${data.period.start} — ${data.period.end}` },
+            ]}
+          />
+        </div>
+      </Card>
+
+      <Section title="Platform Summary" description="Counts returned by the Dashboard aggregation." className="mt-7">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {summary.map((item, index) => (
+            <MetricCard key={item.label} {...item} icon={summaryIcons[index]} tone={item.label === "Active Alerts" && data.summary.active_alerts.total > 0 ? "warning" : "neutral"} />
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Health Indicators" description="Availability is evaluated independently for each backend metric." className="mt-7">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {indicatorDefinitions.map((definition) => {
+            const metric = data.health_indicators[definition.key];
+            const presented = presentMetric(metric);
+            return <MetricCard key={definition.key} label={definition.label} value={presented.value} detail={presented.detail} icon={definition.icon} tone={metricTone(metric)} />;
+          })}
+        </div>
+      </Section>
+
+      <Section title="Active Issues" description="Backend-deduplicated issue projection; identities and relationships are preserved." className="mt-7" action={<Link className="text-xs font-medium text-indigo-700" href="/alerts">View alerts</Link>}>
+        <Card>
+          {data.active_issues.items.length ? data.active_issues.items.map((issue) => {
+            const href = activeIssueHref(issue);
+            return (
+              <div key={issue.issue_key} className="border-b border-zinc-100 p-4 last:border-0">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge status={issue.severity === "CRITICAL" ? "Critical" : "Warning"} />
+                      {issue.alert_status && <StatusBadge status={issue.alert_status} />}
+                      <span className="font-mono text-[10px] text-zinc-500">{issue.issue_key}</span>
+                    </div>
+                    <p className="mt-2 text-sm font-semibold text-zinc-900">{issue.title}</p>
+                    <p className="mt-1 text-xs text-zinc-600">{issue.message}</p>
+                    <p className="mt-2 font-mono text-[10px] text-zinc-500">
+                      {issue.platform_code ?? "Not available"}
+                      {issue.vendor_code ? ` · Vendor: ${issue.vendor_code}` : ""}
+                      {issue.rule_code ? ` · Rule: ${issue.rule_code}` : ""}
+                    </p>
+                    <p className="mt-1 font-mono text-[10px] text-zinc-400">{issue.observed_at ?? "Timestamp not available"}</p>
+                  </div>
+                  {href && <Link href={href} className="text-xs font-medium text-indigo-700 hover:text-indigo-900">View details</Link>}
+                </div>
+              </div>
+            );
+          }) : <div className="p-4"><EmptyState title="No active issues" description="The Dashboard aggregation returned no active issues for this environment." /></div>}
+        </Card>
+      </Section>
+
+      <Section title="Pipelines Requiring Attention" description="Current status is supplied by the backend and is not recalculated from history." className="mt-7">
+        <Card>
+          {data.pipelines_requiring_attention.items.length ? data.pipelines_requiring_attention.items.map((pipeline) => {
+            const success = presentMetric(pipeline.period_success_rate);
+            return (
+              <Row key={pipeline.pipeline_key}>
+                <Cell label="Pipeline"><Link className="font-medium text-indigo-700" href={`/pipelines/${pipeline.pipeline_key}`}>{pipeline.name}</Link></Cell>
+                <Cell label="Status"><StatusBadge status={statusLabel(pipeline.operational_status)} /></Cell>
+                <Cell label="Period success rate">{success.value}</Cell>
+                <Cell label="Latest run">{pipeline.latest_run ? <Link className="font-mono text-indigo-700" href={`/pipeline-runs/${pipeline.latest_run.corvetra_run_id}`}>{pipeline.latest_run.corvetra_run_id}</Link> : "Not available"}</Cell>
+              </Row>
+            );
+          }) : <div className="p-4"><EmptyState title="No pipelines require attention" description="No pipeline attention rows were returned for this environment." /></div>}
+        </Card>
+      </Section>
+
+      <Section title="Latest Runs" description="Latest canonical runs are distinct from the current 24-hour metric period." className="mt-7" action={<Link className="text-xs font-medium text-indigo-700" href="/pipeline-runs">View all runs</Link>}>
+        <Card>
+          {data.latest_runs.items.length ? data.latest_runs.items.map((run) => (
+            <Row key={run.corvetra_run_id} columns={5}>
+              <Cell label="Run"><Link className="font-mono font-medium text-indigo-700" href={latestRunHref(run)}>{run.corvetra_run_id}</Link></Cell>
+              <Cell label="Pipeline / Source">
+                <Link href={`/pipelines/${run.pipeline.pipeline_key}`}>{run.pipeline.name}</Link>
+                <span className="mt-1 block text-[10px] text-zinc-500">
+                  <Link href={`/data-sources/${run.source.source_key}`}>{run.source.name}</Link> · {run.environment.name}
+                </span>
+              </Cell>
+              <Cell label="Status / Stage"><span className="inline-flex items-center gap-2"><StatusBadge status={statusLabel(run.status)} /> {run.stage ?? "Not available"}</span></Cell>
+              <Cell label="Timestamps">
+                <span className="font-mono">{run.started_at}</span>
+                <span className="mt-1 block font-mono text-[10px] text-zinc-500">Completed: {run.completed_at ?? "Not available"}</span>
+              </Cell>
+              <Cell label="Duration / Codes"><span>{run.duration_seconds == null ? "Not available" : `${run.duration_seconds} s`}</span><span className="mt-1 block font-mono text-[10px]">{run.platform_code ?? "Not available"}{run.vendor_code ? ` · Vendor: ${run.vendor_code}` : ""}{run.rule_code ? ` · Rule: ${run.rule_code}` : ""}</span></Cell>
+            </Row>
+          )) : <div className="p-4"><EmptyState title="No latest runs" description="No canonical runs were returned for this environment." icon={<GitBranch className="h-4 w-4" />} tone="neutral" /></div>}
+        </Card>
+      </Section>
+
+      <Section title="Recent Activity" description="Persisted run and technical-event activity with exact backend timestamps." className="mt-7">
+        <Card>
+          {data.recent_activity.items.length ? data.recent_activity.items.map((activity) => {
+            const href = activityHref(activity);
+            return (
+              <Row key={`${activity.kind}:${activity.event_key ?? activity.run?.corvetra_run_id}:${activity.occurred_at}`}>
+                <Cell label="Timestamp"><span className="font-mono">{activity.occurred_at}</span></Cell>
+                <Cell label="Resource">{activity.pipeline?.name ?? activity.source?.name ?? "Platform"}</Cell>
+                <Cell label="Activity">{activity.message}</Cell>
+                <Cell label="Details">{href ? <Link className="text-indigo-700" href={href}>{activity.kind === "TECHNICAL_EVENT" ? "View logs" : "View run"}</Link> : "Not available"}</Cell>
+              </Row>
+            );
+          }) : <div className="p-4"><EmptyState title="No recent activity" description="No persisted activity was returned for this Dashboard period." icon={<Activity className="h-4 w-4" />} tone="neutral" /></div>}
+        </Card>
+      </Section>
+
+      <Card className="mt-7" title="Snapshot Context" description="Exact server-provided Dashboard timestamps and environment.">
+        <div className="p-4">
+          <TechnicalDetails items={[
+            { label: "Generated at", value: data.generated_at },
+            { label: "Period start", value: data.period.start },
+            { label: "Period end", value: data.period.end },
+            { label: "Environment", value: data.environment ?? "All" },
+          ]} />
+        </div>
+      </Card>
+    </div>
+  );
 }
 
 export function DashboardSkeleton() {
-    return (
-        <div className="space-y-6">
-            <div>
-                <Skeleton className="h-7 w-36" />
-                <Skeleton className="mt-2 h-4 w-72" />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} className="h-32" />
-                ))}
-            </div>
-            <Skeleton className="h-64" />
-            <Skeleton className="h-80" />
-        </div>
-    );
+  return <div className="space-y-7"><Skeleton className="h-20" /><Skeleton className="h-52" /><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div><Skeleton className="h-72" /></div>;
 }
