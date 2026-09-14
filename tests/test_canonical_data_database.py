@@ -17,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 INIT_DIR = REPO_ROOT / "platform" / "warehouse" / "init"
 SCHEMA_SQL = (INIT_DIR / "11_create_corvetra_canonical_model.sql").read_text(encoding="utf-8")
 SEED_SQL = (INIT_DIR / "12_seed_corvetra_round1.sql").read_text(encoding="utf-8")
+SETTINGS_SQL = (INIT_DIR / "13_create_workspace_settings.sql").read_text(encoding="utf-8")
 PER_DATABASE_PRE_CANONICAL_SCRIPTS = (
     "01_create_schemas.sql",
     "03_create_metadata_tables.sql",
@@ -47,11 +48,13 @@ class CanonicalDatabaseIntegrationTests(unittest.TestCase):
             cls._apply_precanonical_scripts(cls.fresh_db)
             cls._execute_file(cls.fresh_db, SCHEMA_SQL)
             cls._execute_file(cls.fresh_db, SEED_SQL)
+            cls._execute_file(cls.fresh_db, SETTINGS_SQL)
 
             cls._apply_precanonical_scripts(cls.existing_db)
             cls.legacy_rows = cls._insert_legacy_runs(cls.existing_db)
             cls._execute_file(cls.existing_db, SCHEMA_SQL)
             cls._execute_file(cls.existing_db, SEED_SQL)
+            cls._execute_file(cls.existing_db, SETTINGS_SQL)
         except Exception:
             cls._drop_database(cls.fresh_db)
             cls._drop_database(cls.existing_db)
@@ -151,6 +154,7 @@ class CanonicalDatabaseIntegrationTests(unittest.TestCase):
             "table_schema_snapshots", "data_incidents", "incident_context",
             "environments", "data_sources", "pipelines", "validation_checks",
             "validation_executions", "operational_alerts", "technical_events",
+            "workspace_settings",
         } <= metadata_tables)
         self.assertEqual(roles, [("Admin",), ("Operator",), ("ReadOnly",)])
 
@@ -419,6 +423,34 @@ class CanonicalDatabaseIntegrationTests(unittest.TestCase):
                     with self.assertRaises(psycopg.Error):
                         with connection.transaction():
                             connection.execute(statement, parameters)
+
+    def test_workspace_settings_constraints_and_default_environment_reference(self):
+        qa_id = uuid4()
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO metadata.environments (environment_id, environment_key, environment_name) VALUES (%s, 'settings-test-qa', 'Settings Test QA')",
+                (qa_id,),
+            )
+            with self.assertRaises(psycopg.errors.CheckViolation):
+                with connection.transaction():
+                    connection.execute(
+                        "UPDATE metadata.workspace_settings SET pipeline_healthy = 101 WHERE workspace_key = 'workspace_01J4X8K97B'"
+                    )
+            connection.execute(
+                "UPDATE metadata.workspace_settings SET default_environment_id = %s WHERE workspace_key = 'workspace_01J4X8K97B'",
+                (qa_id,),
+            )
+            with self.assertRaises(psycopg.errors.ForeignKeyViolation):
+                with connection.transaction():
+                    connection.execute("DELETE FROM metadata.environments WHERE environment_id = %s", (qa_id,))
+            connection.execute(
+                "UPDATE metadata.workspace_settings SET default_environment_id = (SELECT environment_id FROM metadata.environments WHERE environment_key = 'production') WHERE workspace_key = 'workspace_01J4X8K97B'"
+            )
+            connection.execute("DELETE FROM metadata.environments WHERE environment_id = %s", (qa_id,))
+            self.assertEqual(
+                connection.execute("SELECT COUNT(*) FROM metadata.environments WHERE environment_id = %s", (qa_id,)).fetchone()[0],
+                0,
+            )
 
 
 if __name__ == "__main__":

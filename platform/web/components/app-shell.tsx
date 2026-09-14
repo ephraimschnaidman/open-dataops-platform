@@ -29,7 +29,7 @@ import { environments, useEnvironmentContext } from "@/lib/environment-context";
 
 interface NavGroup {
   label: string;
-  items: Array<{ name: string; icon: LucideIcon; href?: string; demoOnly?: boolean }>;
+  items: Array<{ name: string; icon: LucideIcon; href?: string }>;
 }
 
 const navGroups: NavGroup[] = [
@@ -56,7 +56,7 @@ const navGroups: NavGroup[] = [
     items: [
       { name: "Validation", icon: FileCheck2, href: "/validation" },
       { name: "Health Metrics", icon: HeartPulse, href: "/health-metrics" },
-      { name: "Settings", icon: Settings, href: "/settings", demoOnly: true },
+      { name: "Settings", icon: Settings, href: "/settings" },
     ],
   },
 ];
@@ -108,18 +108,17 @@ function Sidebar({
             <div key={group.label || "primary"} className="mb-5">
               {group.label && <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.11em] text-zinc-400">{group.label}</p>}
               <div className="space-y-0.5">
-                {group.items.map(({ name, icon: Icon, href, demoOnly }) => {
+                {group.items.map(({ name, icon: Icon, href }) => {
                   const active = Boolean(href && (href === "/" ? pathname === "/" : pathname.startsWith(href)));
                   const className = `group flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-left text-[13px] transition ${active ? "bg-zinc-900 font-medium text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950"}`;
                   const content = (
                     <>
                       <Icon className={`h-4 w-4 ${active ? "text-zinc-300" : "text-zinc-400 group-hover:text-zinc-600"}`} />
                       <span className="flex-1">{name}</span>
-                      {demoOnly && <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${active ? "bg-white/15 text-zinc-200" : "bg-zinc-200 text-zinc-500"}`}>Demo</span>}
                     </>
                   );
                   return href ? (
-                    <Link key={name} href={href} title={demoOnly ? "Demo-only settings; changes are not persisted" : undefined} onClick={onClose} className={className}>{content}</Link>
+                    <Link key={name} href={href} onClick={onClose} className={className}>{content}</Link>
                   ) : (
                     <span key={name} title={`${name} is not available in this MVP`} aria-disabled="true" className={`${className} cursor-not-allowed opacity-50 hover:bg-transparent hover:text-zinc-600`}>{content}</span>
                   );

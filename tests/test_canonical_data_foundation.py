@@ -150,10 +150,11 @@ class CanonicalMigrationContractTests(unittest.TestCase):
             "/opt/open-dataops/10_create_security_tables.sql",
             "/opt/open-dataops/11_create_corvetra_canonical_model.sql",
             "/opt/open-dataops/12_seed_corvetra_round1.sql",
+            "/opt/open-dataops/13_create_workspace_settings.sql",
         ]
         positions = [command.index(path) for path in paths]
         self.assertEqual(positions, sorted(positions))
-        self.assertEqual(command.count("--set=ON_ERROR_STOP=1"), 3)
+        self.assertEqual(command.count("--set=ON_ERROR_STOP=1"), 4)
         for path in paths:
             self.assertTrue(any(path in mount for mount in service["volumes"]))
         self.assertEqual(

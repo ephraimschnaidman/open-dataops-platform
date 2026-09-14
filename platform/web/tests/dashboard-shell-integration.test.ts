@@ -211,7 +211,7 @@ test("global shell is truthful about alert count, search, profile, and Settings"
   assert.match(shell, /Global search is not available in this release/);
   assert.match(shell, /Authenticated session/);
   assert.match(shell, /\/api\/auth\/logout/);
-  assert.match(shell, /Demo-only settings; changes are not persisted/);
+  assert.doesNotMatch(shell, /Demo-only settings; changes are not persisted/);
 });
 
 test("static owner walkthrough routes remain complete across all API-backed screens", async () => {

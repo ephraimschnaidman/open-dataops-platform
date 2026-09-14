@@ -107,10 +107,12 @@ services:
         psql --set=ON_ERROR_STOP=1 --file=/opt/open-dataops/10_create_security_tables.sql
         psql --set=ON_ERROR_STOP=1 --file=/opt/open-dataops/11_create_corvetra_canonical_model.sql
         psql --set=ON_ERROR_STOP=1 --file=/opt/open-dataops/12_seed_corvetra_round1.sql
+        psql --set=ON_ERROR_STOP=1 --file=/opt/open-dataops/13_create_workspace_settings.sql
     volumes:
       - ./platform/warehouse/init/10_create_security_tables.sql:/opt/open-dataops/10_create_security_tables.sql:ro
       - ./platform/warehouse/init/11_create_corvetra_canonical_model.sql:/opt/open-dataops/11_create_corvetra_canonical_model.sql:ro
       - ./platform/warehouse/init/12_seed_corvetra_round1.sql:/opt/open-dataops/12_seed_corvetra_round1.sql:ro
+      - ./platform/warehouse/init/13_create_workspace_settings.sql:/opt/open-dataops/13_create_workspace_settings.sql:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -28,6 +28,7 @@ from api.routes.validation import router as validation_router
 from api.routes.monitoring import router as monitoring_router
 from api.routes.health_metrics import router as health_metrics_router
 from api.routes.dashboard import router as dashboard_router
+from api.routes.settings import router as settings_router
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -132,6 +133,10 @@ def create_app(application_settings: Settings) -> FastAPI:
     )
     application.include_router(
         dashboard_router,
+        dependencies=operational_dependencies,
+    )
+    application.include_router(
+        settings_router,
         dependencies=operational_dependencies,
     )
 

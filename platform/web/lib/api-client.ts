@@ -30,6 +30,8 @@ export interface ApiRequestOptions {
     query?: Record<string, ApiQueryValue>;
     signal?: AbortSignal;
     onUnauthorized?: (returnTo: string) => void;
+    method?: "GET" | "POST" | "PUT" | "DELETE";
+    body?: unknown;
 }
 
 let redirectingToLogin = false;
@@ -49,13 +51,17 @@ export function buildApiUrl(path: string, query?: Record<string, ApiQueryValue>)
     return search ? `${normalizedPath}?${search}` : normalizedPath;
 }
 
-export function normalizeApiError(status: number, _body?: unknown): ApiError {
+export function normalizeApiError(status: number, body?: unknown): ApiError {
+    const payload = body && typeof body === "object" ? body as { code?: unknown; detail?: unknown } : undefined;
+    const code = typeof payload?.code === "string" ? payload.code : undefined;
+    const message = typeof payload?.detail === "string" ? payload.detail : undefined;
     if (status === 401) return new ApiError({ kind: "authentication", status, code: "SESSION_EXPIRED", message: "Your session has expired. Sign in again.", retryable: false });
     if (status === 403) return new ApiError({ kind: "permission", status, code: "PERMISSION_DENIED", message: "You do not have permission to perform this action.", retryable: false });
-    if (status === 404) return new ApiError({ kind: "not_found", status, code: "RESOURCE_NOT_FOUND", message: "The requested resource was not found.", retryable: false });
-    if (status === 422) return new ApiError({ kind: "validation", status, code: "REQUEST_INVALID", message: "The request contains invalid values.", retryable: false });
-    if (status === 503) return new ApiError({ kind: "unavailable", status, code: "SERVICE_UNAVAILABLE", message: "The service is temporarily unavailable.", retryable: true });
-    return new ApiError({ kind: "unexpected", status, code: "UNEXPECTED_API_ERROR", message: "An unexpected service error occurred.", retryable: status >= 500 });
+    if (status === 404) return new ApiError({ kind: "not_found", status, code: code ?? "RESOURCE_NOT_FOUND", message: message ?? "The requested resource was not found.", retryable: false });
+    if (status === 409) return new ApiError({ kind: "validation", status, code: code ?? "REQUEST_CONFLICT", message: message ?? "The request conflicts with the current state.", retryable: false });
+    if (status === 422) return new ApiError({ kind: "validation", status, code: code ?? "REQUEST_INVALID", message: message ?? "The request contains invalid values.", retryable: false });
+    if (status === 503) return new ApiError({ kind: "unavailable", status, code: code ?? "SERVICE_UNAVAILABLE", message: message ?? "The service is temporarily unavailable.", retryable: true });
+    return new ApiError({ kind: "unexpected", status, code: code ?? "UNEXPECTED_API_ERROR", message: message ?? "An unexpected service error occurred.", retryable: status >= 500 });
 }
 
 function currentReturnTo(): string {
@@ -73,8 +79,9 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     let response: Response;
     try {
         response = await fetch(buildApiUrl(path, options.query), {
-            method: "GET",
-            headers: { accept: "application/json" },
+            method: options.method ?? "GET",
+            headers: { accept: "application/json", ...(options.body === undefined ? {} : { "content-type": "application/json" }) },
+            body: options.body === undefined ? undefined : JSON.stringify(options.body),
             credentials: "same-origin",
             cache: "no-store",
             signal: options.signal,
@@ -93,6 +100,8 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
         if (response.status === 401) (options.onUnauthorized ?? defaultUnauthorized)(currentReturnTo());
         throw error;
     }
+
+    if (response.status === 204) return undefined as T;
 
     try {
         return await response.json() as T;

@@ -8,7 +8,7 @@ import {
     isBackendTokenResponse,
     safeReturnTo,
 } from "../lib/auth-core.ts";
-import { buildBackendApiUrl, proxyBackendGet } from "../lib/bff-proxy.ts";
+import { buildBackendApiUrl, proxyBackendGet, proxyBackendMutation } from "../lib/bff-proxy.ts";
 import { apiRequest, ApiError, buildApiUrl, normalizeApiError } from "../lib/api-client.ts";
 import { isPublicPage, shouldRedirectToLogin } from "../lib/route-access.ts";
 
@@ -70,6 +70,20 @@ test("proxy preserves authoritative backend status codes", async () => {
     }
 });
 
+test("Settings mutation proxy preserves method, JSON body, auth, and empty success", async () => {
+    const url = buildBackendApiUrl("http://api:8000", ["settings", "notifications"], "");
+    assert.ok(url);
+    let captured: Request | undefined;
+    const response = await proxyBackendMutation(url, "server-token", "PUT", '{"enabled":true}', undefined, async (input, init) => {
+        captured = new Request(input, init);
+        return new Response(null, { status: 204 });
+    });
+    assert.equal(captured?.method, "PUT");
+    assert.equal(captured?.headers.get("authorization"), "Bearer server-token");
+    assert.equal(await captured?.text(), '{"enabled":true}');
+    assert.equal(response.status, 204);
+});
+
 test("route protection permits login/authenticated pages and redirects protected pages", () => {
     assert.equal(isPublicPage("/login"), true);
     assert.equal(shouldRedirectToLogin("/login", false), false);
@@ -87,8 +101,8 @@ test("API client builds same-origin query URLs and returns typed JSON", async ()
     } finally { globalThis.fetch = originalFetch; }
 });
 
-test("API client normalizes 401/403/404/422/503 without logging out on 403", async () => {
-    const expected = new Map([[401, "authentication"], [403, "permission"], [404, "not_found"], [422, "validation"], [503, "unavailable"]]);
+test("API client normalizes 401/403/404/409/422/503 without logging out on 403", async () => {
+    const expected = new Map([[401, "authentication"], [403, "permission"], [404, "not_found"], [409, "validation"], [422, "validation"], [503, "unavailable"]]);
     for (const [status, kind] of expected) assert.equal(normalizeApiError(status).kind, kind);
 
     const originalFetch = globalThis.fetch;
@@ -100,6 +114,14 @@ test("API client normalizes 401/403/404/422/503 without logging out on 403", asy
         globalThis.fetch = async () => Response.json({}, { status: 403 });
         await assert.rejects(apiRequest("/api/v1/dashboard", { onUnauthorized: () => { unauthorizedCalls += 1; } }), (error: unknown) => error instanceof ApiError && error.kind === "permission");
         assert.equal(unauthorizedCalls, 1);
+    } finally { globalThis.fetch = originalFetch; }
+});
+
+test("API client accepts a successful mutation with no response body", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(null, { status: 204 });
+    try {
+        assert.equal(await apiRequest("/api/v1/settings/environments/qa", { method: "DELETE" }), undefined);
     } finally { globalThis.fetch = originalFetch; }
 });
 
